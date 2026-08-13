@@ -1,0 +1,52 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User profiles and role authorizations for QuickPal platform",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["customer", "partner", "admin", "owner", "store"] },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE", "SUSPENDED"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "storeId": { "type": "string" },
+        "serviceArea": { "type": "string" },
+        "availability": { "type": "boolean" }
+      },
+      "required": ["uid", "email", "role", "status"]
+    },
+    "orders": {
+      "title": "Order",
+      "description": "Grocery delivery orders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "subtotal": { "type": "number" },
+        "total": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "customerId", "status", "total"]
+    },
+    "products": {
+      "title": "Product",
+      "description": "Inventory products",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" },
+        "category": { "type": "string" }
+      },
+      "required": ["id", "name", "price"]
+    }
+  }
+}

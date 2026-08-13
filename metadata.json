@@ -1,0 +1,6 @@
+{
+  "name": "QuickPal",
+  "description": "Fast Hyperlocal Grocery & Essentials Delivery App with Customer, Delivery Partner, Admin, and Owner Dashboards",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

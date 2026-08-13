@@ -1,0 +1,88 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : {};
+    }
+
+    function isOwner() {
+      return isAuthenticated() && getUserData().get('role', '') == 'owner';
+    }
+
+    function isAdminOrOwner() {
+      return isAuthenticated() && (getUserData().get('role', '') in ['admin', 'owner']);
+    }
+
+    function isStaffOrAdmin() {
+      return isAuthenticated() && (getUserData().get('role', '') in ['admin', 'owner', 'store', 'partner', 'delivery_partner']);
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isAuthenticated();
+    }
+
+    // Orders Collection
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdminOrOwner();
+    }
+
+    // Public Read Catalog Data (Products, Categories, Banners, Coupons, Service Pincodes)
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdminOrOwner();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdminOrOwner();
+    }
+
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isAdminOrOwner();
+    }
+
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdminOrOwner();
+    }
+
+    match /servicePincodes/{pincodeId} {
+      allow read: if true;
+      allow write: if isAdminOrOwner();
+    }
+
+    match /paymentSettings/{settingId} {
+      allow read: if true;
+      allow write: if isAdminOrOwner();
+    }
+
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaffOrAdmin();
+    }
+
+    match /faqs/{faqId} {
+      allow read: if true;
+      allow write: if isAdminOrOwner();
+    }
+
+    match /supportTickets/{ticketId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+  }
+}
