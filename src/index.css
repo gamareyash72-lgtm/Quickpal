@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --tiranga-saffron: #FF9933;
+    --tiranga-white: #FFFFFF;
+    --tiranga-green: #138808;
+    --tiranga-navy: #000080;
+  }
+  
+  body {
+    font-family: var(--font-sans);
+    @apply bg-slate-50 text-slate-900 antialiased selection:bg-orange-500 selection:text-white;
+  }
+
+  .dark body {
+    @apply bg-slate-950 text-slate-100 selection:bg-emerald-600 selection:text-white;
+  }
+}
+
+/* Custom Tiranga (Saffron, White, Blue, Green) Theme Utilities */
+.tiranga-top-bar {
+  background: linear-gradient(90deg, #FF9933 0%, #FF9933 33.3%, #FFFFFF 33.3%, #FFFFFF 66.6%, #138808 66.6%, #138808 100%);
+  height: 4px;
+}
+
+.tiranga-banner-gradient {
+  background: linear-gradient(135deg, #FF8000 0%, #1E3A8A 50%, #059669 100%);
+}
+
+.tiranga-header-bg {
+  background: linear-gradient(100deg, #EA580C 0%, #C2410C 30%, #1E3A8A 65%, #047857 100%);
+}
+
+.tiranga-card-border {
+  border-image: linear-gradient(to right, #FF9933, #1E3A8A, #138808) 1;
+}
+
+.tiranga-pill-badge {
+  background: linear-gradient(90deg, rgba(255, 153, 51, 0.15) 0%, rgba(30, 58, 138, 0.1) 50%, rgba(19, 136, 8, 0.15) 100%);
+  border: 1px solid rgba(255, 153, 51, 0.3);
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 12s linear infinite;
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-orange-300 dark:bg-orange-800/60 rounded-full hover:bg-orange-400;
+}
