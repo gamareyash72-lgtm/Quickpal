@@ -1365,7 +1365,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           latitude: deliveryLat,
           longitude: deliveryLng
         },
-        status: 'placed',
+        status: 'PLACED',
         assignedPartnerId: null,
         subtotal: cartSubtotal,
         deliveryFee: deliveryFee,
@@ -1728,17 +1728,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
       })
     );
-
-    if (db) {
-      const orderRef = doc(db, 'orders', orderId);
-      updateDoc(orderRef, {
-        status: 'store_accepted',
-        storeInfo: defaultStore,
-        storeAcceptedAt: nowIso
-      }).catch(err => {
-        console.warn('Firestore storeAcceptOrder update error:', err);
-      });
-    }
 
     // Push notification to Delivery Partners broadcast
     sendNotification({

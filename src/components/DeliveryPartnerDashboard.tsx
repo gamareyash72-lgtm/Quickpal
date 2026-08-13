@@ -52,27 +52,24 @@ export const DeliveryPartnerDashboard: React.FC = () => {
   const partnerUid = currentUser?.id || activePartner.id;
 
   // Pending orders requiring partner acceptance in active service area pincode (default 401102)
-  const pendingOrders = (orders || []).filter(o => {
-    const s = (o?.status || '').toLowerCase();
-    const isEligibleStatus = s === 'placed' || s === 'store_accepted' || s === 'ready_for_delivery';
-    const isUnassigned = !o?.deliveryPartnerId && !o?.assignedPartnerId;
-    const notResponded = !(o?.partnerResponseLogs || []).some(l => l?.partnerId === partnerUid);
-    const pin = o?.deliveryPincode || o?.address?.pincode || '401102';
-    const isZoneMatch = !pin || pin === selectedZonePincode || pin === '401102';
-
-    return isEligibleStatus && isUnassigned && notResponded && isZoneMatch;
-  });
+  const pendingOrders = orders.filter(
+    o => (o.status === 'READY_FOR_DELIVERY' || o.status === 'store_accepted' || o.status === 'placed') &&
+      !o.deliveryPartnerId &&
+      !o.assignedPartnerId &&
+      !o.partnerResponseLogs?.some(l => l.partnerId === partnerUid) &&
+      (!o.address?.pincode || o.address?.pincode === selectedZonePincode || o.address?.pincode === '401102')
+  );
 
   // Orders accepted by this partner
-  const myAssignedOrders = (orders || []).filter(
-    o => (o?.deliveryPartnerId === partnerUid || o?.assignedPartnerId === partnerUid) &&
-      o?.status !== 'delivered' && o?.status !== 'cancelled' && o?.status !== 'DELIVERED' && o?.status !== 'CANCELLED'
+  const myAssignedOrders = orders.filter(
+    o => (o.deliveryPartnerId === partnerUid || o.assignedPartnerId === partnerUid) &&
+      o.status !== 'delivered' && o.status !== 'cancelled' && o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
   );
 
   // Completed delivery history for this partner
-  const myCompletedOrders = (orders || []).filter(
-    o => (o?.deliveryPartnerId === partnerUid || o?.assignedPartnerId === partnerUid) &&
-      (o?.status === 'delivered' || o?.status === 'DELIVERED')
+  const myCompletedOrders = orders.filter(
+    o => (o.deliveryPartnerId === partnerUid || o.assignedPartnerId === partnerUid) &&
+      (o.status === 'delivered' || o.status === 'DELIVERED')
   );
 
   const toggleOnline = () => {
@@ -348,10 +345,10 @@ export const DeliveryPartnerDashboard: React.FC = () => {
                 {/* Items preview */}
                 <div className="bg-amber-50/60 dark:bg-amber-950/20 p-3 rounded-2xl border border-amber-200/50 text-xs">
                   <span className="font-bold text-amber-900 dark:text-amber-300 block mb-1">
-                    Order Items Checked by Store ({(ord.items || []).length}):
+                    Order Items Checked by Store ({ord.items.length}):
                   </span>
                   <p className="text-gray-700 dark:text-gray-300 font-medium truncate">
-                    {(ord.items || []).map(i => `${i.quantity}x ${i.product?.name || i.productName || 'Item'}`).join(', ')}
+                    {ord.items.map(i => `${i.quantity}x ${i.product.name}`).join(', ')}
                   </p>
                   <p className="text-[10px] text-gray-500 mt-1">
                     Payment Method: <strong className="uppercase">{ord.paymentMethod}</strong> (Total ₹{ord.total})
