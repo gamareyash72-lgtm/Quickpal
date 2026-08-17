@@ -29,7 +29,8 @@ import {
   RefreshCw,
   XCircle,
   Plus,
-  Navigation
+  Navigation,
+  Trash2
 } from 'lucide-react';
 
 interface CheckoutModalProps {
@@ -49,6 +50,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     selectedAddress,
     addresses,
     setSelectedAddress,
+    deleteAddress,
     appliedCoupon,
     applyCoupon,
     removeCoupon,
@@ -65,6 +67,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Checkout Multi-Step State: 'details' | 'verify_payment' | 'transaction_failed'
   const [checkoutStep, setCheckoutStep] = useState<'details' | 'verify_payment' | 'transaction_failed'>('details');
   const [showAddAddressModal, setShowAddAddressModal] = useState(false);
+  const [addressToDelete, setAddressToDelete] = useState<{ id: string; label: string; addressLine: string } | null>(null);
 
   // Payment Verification Fields
   const [utrNumber, setUtrNumber] = useState('');
@@ -378,7 +381,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     <div
                       key={addr.id}
                       onClick={() => setSelectedAddress(addr)}
-                      className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
+                      className={`p-3 rounded-2xl border text-left cursor-pointer transition-all relative group ${
                         selectedAddress.id === addr.id
                           ? isApproved
                             ? 'border-orange-500 bg-orange-50/60 dark:bg-orange-900/20 ring-2 ring-orange-500/20'
@@ -390,15 +393,28 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         <span className="text-xs font-black text-orange-800 dark:text-orange-300">
                           {addr.label}
                         </span>
-                        <span
-                          className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
-                            isApproved
-                              ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
-                              : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
-                          }`}
-                        >
-                          {isApproved ? '✓ Serviceable' : '✕ Unserviceable'}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+                              isApproved
+                                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                                : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
+                            }`}
+                          >
+                            {isApproved ? '✓ Serviceable' : '✕ Unserviceable'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAddressToDelete({ id: addr.id, label: addr.label, addressLine: addr.addressLine });
+                            }}
+                            className="p-1 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-gray-400 hover:text-rose-600 transition-colors"
+                            title={`Delete ${addr.label} address`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
                       <p className="text-xs font-semibold">{addr.addressLine}</p>
                       <p className="text-[11px] text-gray-500 dark:text-gray-400">
@@ -1220,6 +1236,42 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         isOpen={showAddAddressModal}
         onClose={() => setShowAddAddressModal(false)}
       />
+
+      {/* Delete Address Confirmation Modal */}
+      {addressToDelete && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-xs font-bold border border-rose-200 dark:border-rose-900/50 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <h3 className="text-sm font-black uppercase text-gray-900 dark:text-gray-100">
+                Remove Saved Address?
+              </h3>
+            </div>
+            <p className="text-gray-700 dark:text-gray-300 font-semibold leading-relaxed">
+              Are you sure you want to remove <span className="text-orange-600 dark:text-orange-400 font-black">'{addressToDelete.label}'</span> ({addressToDelete.addressLine}) from your delivery addresses?
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setAddressToDelete(null)}
+                className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteAddress(addressToDelete.id);
+                  setAddressToDelete(null);
+                }}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-black px-4 py-2 rounded-xl shadow-md flex items-center gap-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Remove Address
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

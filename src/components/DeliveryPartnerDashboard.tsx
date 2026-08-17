@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Order } from '../types';
 import { DeliveryRouteMapModal } from './DeliveryRouteMapModal';
+import { db, auth, onSnapshot, collection } from '../lib/firebase';
 import {
   Bike,
   CheckCircle,
@@ -17,7 +18,10 @@ import {
   AlertCircle,
   Building,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  RefreshCw,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 
 export const DeliveryPartnerDashboard: React.FC = () => {
@@ -29,6 +33,7 @@ export const DeliveryPartnerDashboard: React.FC = () => {
     activePartner,
     servicePincodes,
     orders,
+    syncOrdersFromRemote,
     partnerRespondToOrder,
     updateOrderStatusByAdmin,
     updatePartner
@@ -38,8 +43,113 @@ export const DeliveryPartnerDashboard: React.FC = () => {
   const [selectedMapOrder, setSelectedMapOrder] = useState<Order | null>(null);
   const [mapDefaultLeg, setMapDefaultLeg] = useState<'store' | 'customer'>('store');
   const [selectedZonePincode, setSelectedZonePincode] = useState<string>(activePartner?.pinCode || '401102');
+  
+  // Real-time listener connection & error diagnostics state
+  const [listenerStatus, setListenerStatus] = useState<'connected' | 'reconnecting' | 'error'>('connecting' as any);
+  const [syncError, setSyncError] = useState<{ code: string; message: string; timestamp: string } | null>(null);
+  const [reconnectCount, setReconnectCount] = useState<number>(0);
 
   const isPartnerUser = currentUser && (currentUser.role === 'partner' || currentUser.role === 'delivery_partner');
+  const partnerUid = currentUser?.id || activePartner?.id || 'dp-1';
+
+  // Manual or automatic re-authentication & reconnection handler
+  const handleReauthAndReconnect = useCallback(async () => {
+    setListenerStatus('reconnecting');
+    setSyncError(null);
+    try {
+      if (auth.currentUser) {
+        console.log('[DeliveryPartnerDashboard] Refreshing Firebase Auth token...');
+        await auth.currentUser.getIdToken(true);
+        console.log('[DeliveryPartnerDashboard] Token refreshed successfully.');
+      } else {
+        console.log('[DeliveryPartnerDashboard] No active Firebase Auth user session; reconnecting listener...');
+      }
+      setReconnectCount(prev => prev + 1);
+    } catch (err: any) {
+      console.error('[DeliveryPartnerDashboard] Re-authentication error:', {
+        code: err?.code || 'AUTH_REFRESH_ERROR',
+        message: err?.message || String(err)
+      });
+      setSyncError({
+        code: err?.code || 'AUTH_REFRESH_ERROR',
+        message: err?.message || 'Failed to refresh authentication session.',
+        timestamp: new Date().toLocaleTimeString()
+      });
+      setListenerStatus('error');
+    }
+  }, []);
+
+  // Dedicated Firestore real-time onSnapshot listener for Delivery Partner
+  useEffect(() => {
+    if (!db) {
+      setListenerStatus('connected');
+      return;
+    }
+
+    setListenerStatus('connected');
+    const ordersColRef = collection(db, 'orders');
+
+    const unsub = onSnapshot(
+      ordersColRef,
+      (snapshot) => {
+        setListenerStatus('connected');
+        setSyncError(null);
+
+        const remoteOrders: Order[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          remoteOrders.push({
+            id: docSnap.id,
+            ...data,
+            status: (data?.status || 'placed').toString(),
+            items: data?.items || [],
+            partnerResponseLogs: data?.partnerResponseLogs || [],
+            deliveryPincode: data?.deliveryPincode || data?.address?.pincode || '401102',
+            assignedPartnerId: data?.assignedPartnerId || data?.deliveryPartnerId || null,
+            deliveryPartnerId: data?.deliveryPartnerId || data?.assignedPartnerId || null
+          } as Order);
+        });
+
+        if (syncOrdersFromRemote) {
+          syncOrdersFromRemote(remoteOrders);
+        }
+      },
+      async (err) => {
+        // Explicit structured error logging instead of failing silently
+        console.error('[DeliveryPartnerDashboard onSnapshot Listener Error]', {
+          code: err.code,
+          message: err.message,
+          name: err.name,
+          partnerId: partnerUid,
+          authUid: auth.currentUser?.uid || 'anonymous/unauthenticated',
+          timestamp: new Date().toISOString(),
+          details: err
+        });
+
+        setSyncError({
+          code: err.code || 'UNKNOWN_ERROR',
+          message: err.message || 'Firestore listener encountered an unexpected error.',
+          timestamp: new Date().toLocaleTimeString()
+        });
+        setListenerStatus('error');
+
+        // Handle permission-denied or unauthenticated by re-authenticating / refreshing token
+        if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
+          console.warn('[DeliveryPartnerDashboard] Permission denied or unauthenticated. Attempting automatic token refresh...');
+          if (auth.currentUser) {
+            try {
+              await auth.currentUser.getIdToken(true);
+              console.log('[DeliveryPartnerDashboard] Successfully refreshed token after permission error.');
+            } catch (refreshErr) {
+              console.error('[DeliveryPartnerDashboard] Error refreshing auth token:', refreshErr);
+            }
+          }
+        }
+      }
+    );
+
+    return () => unsub();
+  }, [reconnectCount, partnerUid, syncOrdersFromRemote]);
 
   if (!activePartner) {
     return (
@@ -49,27 +159,29 @@ export const DeliveryPartnerDashboard: React.FC = () => {
     );
   }
 
-  const partnerUid = currentUser?.id || activePartner.id;
-
   // Pending orders requiring partner acceptance in active service area pincode (default 401102)
-  const pendingOrders = orders.filter(
-    o => (o.status === 'READY_FOR_DELIVERY' || o.status === 'store_accepted' || o.status === 'placed') &&
-      !o.deliveryPartnerId &&
-      !o.assignedPartnerId &&
-      !o.partnerResponseLogs?.some(l => l.partnerId === partnerUid) &&
-      (!o.address?.pincode || o.address?.pincode === selectedZonePincode || o.address?.pincode === '401102')
-  );
+  const pendingOrders = (orders || []).filter(o => {
+    const s = (o?.status || 'pending').toLowerCase().trim();
+    const isEligibleStatus = !s || s === 'pending' || s === 'placed' || s === 'store_accepted' || s === 'ready_for_delivery' || s === 'processing';
+    const isUnassigned = !o?.deliveryPartnerId && !o?.assignedPartnerId;
+    const notResponded = !(o?.partnerResponseLogs || []).some(l => l?.partnerId === partnerUid);
+    const pin = (o?.deliveryPincode || o?.address?.pincode || (typeof o?.address === 'string' && o.address.includes('401102') ? '401102' : '') || '401102').trim();
+    const activeZone = (selectedZonePincode || activePartner?.pinCode || '401102').trim();
+    const isZoneMatch = !activeZone || !pin || pin === activeZone || pin === '401102' || activeZone === '401102';
+
+    return isEligibleStatus && isUnassigned && notResponded && isZoneMatch;
+  });
 
   // Orders accepted by this partner
-  const myAssignedOrders = orders.filter(
-    o => (o.deliveryPartnerId === partnerUid || o.assignedPartnerId === partnerUid) &&
-      o.status !== 'delivered' && o.status !== 'cancelled' && o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
+  const myAssignedOrders = (orders || []).filter(
+    o => (o?.deliveryPartnerId === partnerUid || o?.assignedPartnerId === partnerUid) &&
+      (o?.status || '').toLowerCase() !== 'delivered' && (o?.status || '').toLowerCase() !== 'cancelled'
   );
 
   // Completed delivery history for this partner
-  const myCompletedOrders = orders.filter(
-    o => (o.deliveryPartnerId === partnerUid || o.assignedPartnerId === partnerUid) &&
-      (o.status === 'delivered' || o.status === 'DELIVERED')
+  const myCompletedOrders = (orders || []).filter(
+    o => (o?.deliveryPartnerId === partnerUid || o?.assignedPartnerId === partnerUid) &&
+      (o?.status || '').toLowerCase() === 'delivered'
   );
 
   const toggleOnline = () => {
@@ -104,6 +216,37 @@ export const DeliveryPartnerDashboard: React.FC = () => {
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950 p-4 sm:p-6 space-y-6 pb-20">
+      {/* Sync Status / Permission Diagnostics Banner */}
+      {syncError && (
+        <div className="bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-300 dark:border-rose-800 rounded-3xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-rose-500 text-white rounded-xl">
+              <WifiOff className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-rose-900 dark:text-rose-200">
+                  Firestore Orders Stream Notice
+                </span>
+                <span className="bg-rose-200 dark:bg-rose-900 text-rose-800 dark:text-rose-200 font-mono text-[10px] px-2 py-0.5 rounded font-bold">
+                  {syncError.code}
+                </span>
+              </div>
+              <p className="text-rose-700 dark:text-rose-300 text-[11px] mt-0.5">
+                {syncError.message} (Logged at {syncError.timestamp})
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleReauthAndReconnect}
+            className="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all transform active:scale-95 whitespace-nowrap"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Re-authenticate & Reconnect
+          </button>
+        </div>
+      )}
+
       {/* Top Bar Partner Profile & Status */}
       <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
@@ -145,7 +288,14 @@ export const DeliveryPartnerDashboard: React.FC = () => {
         {/* Online / Offline Toggle */}
         <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-gray-100 dark:border-gray-800">
           <div className="text-right">
-            <span className="text-[10px] font-bold text-gray-400 uppercase block">Duty Status</span>
+            <div className="flex items-center justify-end gap-1.5 mb-0.5">
+              <span className="text-[10px] font-bold text-gray-400 uppercase">Duty Status</span>
+              {listenerStatus === 'connected' && !syncError && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/80 px-1.5 py-0.2 rounded">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Live Sync
+                </span>
+              )}
+            </div>
             <span
               className={`text-xs font-black uppercase tracking-wider ${
                 activePartner.isOnline ? 'text-orange-600' : 'text-gray-400'
@@ -345,10 +495,10 @@ export const DeliveryPartnerDashboard: React.FC = () => {
                 {/* Items preview */}
                 <div className="bg-amber-50/60 dark:bg-amber-950/20 p-3 rounded-2xl border border-amber-200/50 text-xs">
                   <span className="font-bold text-amber-900 dark:text-amber-300 block mb-1">
-                    Order Items Checked by Store ({ord.items.length}):
+                    Order Items Checked by Store ({(ord.items || []).length}):
                   </span>
                   <p className="text-gray-700 dark:text-gray-300 font-medium truncate">
-                    {ord.items.map(i => `${i.quantity}x ${i.product.name}`).join(', ')}
+                    {(ord.items || []).map(i => `${i.quantity}x ${i.product?.name || i.productName || 'Item'}`).join(', ')}
                   </p>
                   <p className="text-[10px] text-gray-500 mt-1">
                     Payment Method: <strong className="uppercase">{ord.paymentMethod}</strong> (Total ₹{ord.total})

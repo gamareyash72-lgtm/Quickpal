@@ -104,48 +104,34 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      {/* Tiranga Top Tri-Color Accent Bar */}
-      <div className="w-full h-1.5 bg-gradient-to-r from-orange-500 via-white to-emerald-600 shrink-0 shadow-xs" />
+      {/* Subtle Ganapati Chaturthi Festive Top Accent Line */}
+      <div className="w-full h-1 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 shrink-0 shadow-xs" />
 
-      <header className="bg-gradient-to-r from-orange-600 via-slate-900 to-emerald-700 dark:from-orange-950 dark:via-blue-950 dark:to-emerald-950 text-white px-4 sm:px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-3 shadow-lg shrink-0 border-b border-white/20 transition-colors relative overflow-hidden">
-        {/* Subtle Background Tiranga Glow */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-orange-500/20 via-blue-600/10 to-emerald-500/20 pointer-events-none" />
+      <header className="bg-gradient-to-r from-amber-900 via-orange-900 to-amber-950 dark:from-amber-950 dark:via-stone-950 dark:to-amber-950 text-white px-4 sm:px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-3 shadow-md shrink-0 border-b border-amber-500/20 transition-colors relative overflow-hidden">
+        {/* Subtle Non-Intrusive Floral Garland Motif in Background */}
+        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fbbf24_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
 
         <div className="flex items-center justify-between w-full md:w-auto gap-4 relative z-10">
-          {/* QuickPal Branding Logo with Tiranga Theme & Ashoka Chakra Wheel */}
+          {/* QuickPal Branding Logo with Subtle Festive Floral Touch */}
           <div className="flex items-center gap-2.5">
-            {/* Spinning Ashoka Chakra Navy Emblem */}
-            <div className="w-8 h-8 rounded-full bg-white text-blue-900 border-2 border-blue-900 flex items-center justify-center p-0.5 shadow-md shrink-0">
-              <svg viewBox="0 0 24 24" className="w-full h-full text-blue-900 animate-spin-slow stroke-current fill-none stroke-[1.5]">
-                <circle cx="12" cy="12" r="10" />
-                <circle cx="12" cy="12" r="2" fill="currentColor" />
-                {Array.from({ length: 24 }).map((_, i) => (
-                  <line
-                    key={i}
-                    x1="12"
-                    y1="12"
-                    x2={12 + 8 * Math.cos((i * 15 * Math.PI) / 180)}
-                    y2={12 + 8 * Math.sin((i * 15 * Math.PI) / 180)}
-                  />
-                ))}
-              </svg>
+            {/* Elegant Diya / Lotus Icon Container */}
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-amber-50 flex items-center justify-center shadow-md shrink-0 border border-amber-300/40">
+              <span className="text-base select-none" title="गणेशोत्सव विशेष">🌺</span>
             </div>
 
             <div className="flex flex-col cursor-pointer select-none" onClick={() => setSearchQuery('')}>
               <div className="flex items-center gap-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/90 leading-none bg-orange-500 px-1.5 py-0.5 rounded-xs">
-                  Saffron
+                <span className="text-[9px] font-black uppercase tracking-wider text-amber-200 bg-amber-950/80 px-1.5 py-0.5 rounded border border-amber-500/30 flex items-center gap-1">
+                  <span>🌸</span>
+                  <span>Ganesh Utsav</span>
                 </span>
-                <span className="text-[10px] font-black uppercase tracking-widest text-blue-950 leading-none bg-white px-1.5 py-0.5 rounded-xs">
-                  India
-                </span>
-                <span className="text-[10px] font-black uppercase tracking-widest text-white leading-none bg-emerald-600 px-1.5 py-0.5 rounded-xs">
-                  Green
+                <span className="text-[9px] font-bold text-amber-100/90 hidden sm:inline">
+                  • 10-Min Delivery
                 </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black italic tracking-tight flex items-center text-white drop-shadow-sm">
-                Quick<span className="text-orange-400">Pal</span>
-                <div className="ml-1.5 w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                Quick<span className="text-amber-400">Pal</span>
+                <div className="ml-1.5 w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
               </h1>
             </div>
           </div>

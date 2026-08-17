@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Product } from '../types';
 import { ProductDetailModal } from './ProductDetailModal';
 import { AddAddressModal } from './AddAddressModal';
+import ganpatiBappaImg from '../assets/images/ganpati_bappa_statue_1786946303732.jpg';
 import {
   Zap,
   Plus,
@@ -18,7 +19,8 @@ import {
   Eye,
   Images,
   MapPin,
-  AlertTriangle
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 
 interface CustomerDashboardProps {
@@ -53,12 +55,14 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     selectedAddress,
     addresses,
     setSelectedAddress,
+    deleteAddress,
     isPincodeApproved
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'all' | 'featured' | 'under10' | 'deals'>('all');
   const [selectedDetailProduct, setSelectedDetailProduct] = useState<Product | null>(null);
   const [showAddAddressModal, setShowAddAddressModal] = useState(false);
+  const [addressToDelete, setAddressToDelete] = useState<{ id: string; label: string; addressLine: string } | null>(null);
 
   // Active trackable order for floating widget
   const activeOrder = orders.find(
@@ -139,19 +143,38 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <span className="text-[10px] uppercase font-black text-gray-400 shrink-0">Saved Locations:</span>
           {addresses.map(addr => (
-            <button
+            <div
               key={addr.id}
-              onClick={() => setSelectedAddress(addr)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 flex items-center gap-1.5 group ${
                 selectedAddress.id === addr.id
                   ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
                   : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-gray-300'
               }`}
             >
-              <MapPin className="w-3.5 h-3.5" />
-              <span>{addr.label}</span>
-              <span className="opacity-75 font-normal text-[10px]">({addr.pincode})</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setSelectedAddress(addr)}
+                className="flex items-center gap-1.5 focus:outline-none"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>{addr.label}</span>
+                <span className="opacity-75 font-normal text-[10px]">({addr.pincode})</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAddressToDelete({ id: addr.id, label: addr.label, addressLine: addr.addressLine });
+                }}
+                className={`p-0.5 rounded-full hover:bg-black/20 transition-colors ml-0.5 ${
+                  selectedAddress.id === addr.id ? 'text-white/80 hover:text-white' : 'text-gray-400 hover:text-rose-600'
+                }`}
+                title={`Delete ${addr.label} address`}
+                aria-label={`Delete ${addr.label} address`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
           ))}
           <button
             onClick={() => setShowAddAddressModal(true)}
@@ -186,59 +209,74 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         </div>
       )}
 
-      {/* Hero Banners Section with Tiranga Theme */}
+      {/* Hero Banners Section with Happy Ganesh Chaturthi Theme */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Main Banner - Saffron, White, Navy Blue & India Green Tiranga Banner */}
-        <div className="md:col-span-2 bg-gradient-to-r from-orange-600 via-slate-900 to-emerald-700 text-white rounded-3xl p-6 sm:p-8 relative overflow-hidden flex items-center shadow-xl border border-white/20">
+        {/* Main Banner - Happy Ganesh Chaturthi with Ganpati Bappa Statue */}
+        <div className="md:col-span-2 bg-gradient-to-r from-amber-950 via-orange-900 to-amber-900 text-white rounded-3xl p-6 sm:p-8 relative overflow-hidden flex flex-col sm:flex-row items-center justify-between shadow-xl border border-amber-500/30 gap-6">
           <div className="z-10 max-w-md">
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className="bg-orange-500 text-white text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-sm shadow-xs">
-                Saffron
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="bg-amber-500 text-amber-950 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full shadow-xs border border-yellow-300/60 flex items-center gap-1">
+                <span>🌺</span>
+                <span>गणेशोत्सव विशेष २०२६</span>
               </span>
-              <span className="bg-white text-blue-950 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-sm shadow-xs">
-                White
-              </span>
-              <span className="bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-sm shadow-xs">
-                Green
-              </span>
-              <span className="text-blue-300 text-[10px] font-bold ml-1">
-                🇮🇳 Tiranga Express
+              <span className="text-amber-300 text-xs font-bold">
+                श्री गणेशाय नमः
               </span>
             </div>
-            <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight mb-2 tracking-tight drop-shadow-md">
-              FRESH GROCERY &<br />DAILY ESSENTIALS
+            <h2 className="text-2xl sm:text-4xl font-black text-amber-100 leading-tight mb-2 tracking-tight drop-shadow-md">
+              HAPPY GANESH<br />
+              <span className="text-yellow-300">CHATURTHI! 🌺</span>
             </h2>
-            <p className="text-xs sm:text-sm text-slate-100 font-bold mb-5">
-              Saphale (401102) Express Delivery in 30 Mins with Best Tiranga Offers!
+            <p className="text-xs sm:text-sm text-amber-100 font-semibold mb-5">
+              गणपती बाप्पा मोरया! Fresh Ukadiche Modak, 21 Durva Grass, Red Hibiscus & Pooja Samagri delivered in 10-15 mins in Saphale!
             </p>
             <button
-              onClick={() => setActiveTab('deals')}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm shadow-lg border border-orange-300/40 transition-all flex items-center gap-2 transform active:scale-95"
+              onClick={() => {
+                setSelectedCategoryId('cat-ganesh-special');
+                setActiveTab('all');
+              }}
+              className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-amber-950 px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm shadow-lg border border-yellow-300/60 transition-all flex items-center gap-2 transform active:scale-95"
             >
-              Shop Express Offers <ArrowRight className="w-4 h-4" />
+              <span>🥟 Order Bappa Prasad & Puja Kit</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
-          <div className="absolute -right-8 -bottom-8 opacity-15 pointer-events-none">
-            <div className="w-64 h-64 bg-white rounded-full border-8 border-blue-900"></div>
+
+          {/* Ganpati Bappa Statue Image */}
+          <div className="relative z-10 shrink-0 w-36 h-36 sm:w-48 sm:h-48 rounded-2xl overflow-hidden shadow-2xl border-2 border-amber-400/50 group">
+            <img
+              src={ganpatiBappaImg}
+              alt="Lord Ganesha - Ganpati Bappa Statue"
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-2">
+              <span className="text-[11px] font-black text-yellow-300 drop-shadow-md">
+                🙏 बाप्पा मोरया
+              </span>
+            </div>
           </div>
+
+          {/* Ambient Glows */}
+          <div className="absolute -right-12 -bottom-12 w-64 h-64 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -left-12 -top-12 w-64 h-64 bg-orange-500/20 rounded-full blur-3xl pointer-events-none" />
         </div>
 
-        {/* Fastest Delivery Badge Card with Tiranga Accent */}
-        <div className="bg-emerald-50 dark:bg-emerald-950/40 rounded-3xl p-6 border-2 border-emerald-300 dark:border-emerald-800 flex flex-col justify-center items-center text-center shadow-sm">
-          <div className="w-16 h-16 bg-gradient-to-tr from-emerald-600 to-orange-500 text-white rounded-2xl flex items-center justify-center mb-3 shadow-md">
-            <Clock className="w-9 h-9" />
+        {/* Express Delivery Badge Card with Ganpati Festival Accent */}
+        <div className="bg-amber-50 dark:bg-amber-950/40 rounded-3xl p-6 border-2 border-amber-300 dark:border-amber-800/80 flex flex-col justify-center items-center text-center shadow-sm relative overflow-hidden">
+          <div className="w-16 h-16 bg-gradient-to-tr from-amber-500 to-orange-600 text-white rounded-2xl flex items-center justify-center mb-3 shadow-md border border-amber-300/40 text-3xl">
+            🪔
           </div>
           <div className="flex items-center gap-1.5 mb-1">
-            <Zap className="w-4 h-4 text-orange-500 fill-orange-500" />
-            <h3 className="font-black text-orange-950 dark:text-orange-100 text-lg">
-              Within 30 Minutes
+            <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400 fill-amber-500" />
+            <h3 className="font-black text-amber-950 dark:text-amber-100 text-lg">
+              10 - 15 Mins Delivery
             </h3>
           </div>
-          <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-3">
-            Ultra-fast dark store fulfillment nearby
+          <p className="text-xs text-amber-800 dark:text-amber-300 font-semibold mb-3">
+            Fastest dark store delivery for your daily Aarti & Naivedya
           </p>
-          <div className="bg-orange-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider">
-            100% On Time Guarantee
+          <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-amber-50 text-[10px] font-black px-3.5 py-1.5 rounded-full uppercase tracking-wider shadow-xs">
+            🌺 Saphale West (401102)
           </div>
         </div>
       </div>
@@ -565,6 +603,42 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         isOpen={showAddAddressModal}
         onClose={() => setShowAddAddressModal(false)}
       />
+
+      {/* Delete Address Confirmation Modal */}
+      {addressToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-xs font-bold border border-rose-200 dark:border-rose-900/50 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <h3 className="text-sm font-black uppercase text-gray-900 dark:text-gray-100">
+                Remove Saved Address?
+              </h3>
+            </div>
+            <p className="text-gray-700 dark:text-gray-300 font-semibold leading-relaxed">
+              Are you sure you want to remove <span className="text-orange-600 dark:text-orange-400 font-black">'{addressToDelete.label}'</span> ({addressToDelete.addressLine}) from your saved delivery locations?
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setAddressToDelete(null)}
+                className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteAddress(addressToDelete.id);
+                  setAddressToDelete(null);
+                }}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-black px-4 py-2 rounded-xl shadow-md flex items-center gap-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Remove Address
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

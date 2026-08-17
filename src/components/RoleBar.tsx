@@ -42,29 +42,33 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth }) => {
   const authorizedRoles = getAuthorizedRoles();
 
   return (
-    <div className="bg-slate-950 text-white text-xs py-2 px-4 flex flex-wrap items-center justify-between border-b border-slate-800 shrink-0 gap-2 relative">
-      <div className="flex items-center gap-3">
-        {/* Tiranga Flag Pill */}
-        <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 shadow-xs">
-          <div className="w-2.5 h-2.5 rounded-full bg-orange-500"></div>
-          <div className="w-2.5 h-2.5 rounded-full bg-white"></div>
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-600"></div>
+    <div className="bg-stone-950 text-white text-xs py-2 px-4 flex flex-wrap items-center justify-between border-b border-amber-950/60 shrink-0 gap-2 relative overflow-hidden">
+      {/* Delicate floral watermark */}
+      <div className="absolute right-0 top-0 bottom-0 opacity-5 pointer-events-none flex items-center pr-6 select-none text-2xl">
+        🌺 🌸 🌼
+      </div>
+
+      <div className="flex items-center gap-3 relative z-10">
+        {/* Subtle Festive Pill */}
+        <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-950/80 border border-amber-500/30 text-[10px] font-black text-amber-200">
+          <span>🌺</span>
+          <span>श्री गणेशोत्सव</span>
         </div>
 
-        <span className="font-black uppercase tracking-wider text-orange-400 flex items-center gap-1.5">
+        <span className="font-black tracking-wide text-amber-400 flex items-center gap-1.5">
           QuickPal Saphale (401102)
         </span>
 
         {isStaffAuthenticated ? (
-          <div className="flex items-center gap-2 bg-slate-900 px-2.5 py-1 rounded-lg border border-orange-500/30 text-[11px]">
-            <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="font-bold text-slate-200">
-              {currentUser.name} <span className="text-orange-400 font-mono text-[10px]">({currentUser.role.toUpperCase()})</span>
+          <div className="flex items-center gap-2 bg-stone-900 px-2.5 py-1 rounded-lg border border-amber-500/30 text-[11px]">
+            <UserCheck className="w-3.5 h-3.5 text-amber-400" />
+            <span className="font-bold text-stone-200">
+              {currentUser.name} <span className="text-amber-400 font-mono text-[10px]">({currentUser.role.toUpperCase()})</span>
             </span>
           </div>
         ) : (
-          <span className="hidden md:inline text-slate-400 text-[11px] font-bold">
-            🇮🇳 Tiranga Theme | Hyperlocal Express Delivery
+          <span className="hidden md:inline text-stone-400 text-[11px] font-semibold">
+            Fresh Modaks & Puja Samagri in 10 Mins • Hyperlocal Saphale
           </span>
         )}
       </div>

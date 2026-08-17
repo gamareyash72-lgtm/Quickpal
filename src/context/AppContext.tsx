@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { verifyPaymentDetails } from '../utils/paymentVerifier';
 import {
   auth,
@@ -14,6 +14,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   collection,
   getDocs,
   query,
@@ -92,6 +93,8 @@ interface AppContextType {
   partners: DeliveryPartner[];
   coupons: Coupon[];
   orders: Order[];
+  setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
+  syncOrdersFromRemote: (remoteOrders: Order[]) => void;
   notifications: AppNotification[];
   paymentSettings: PaymentSettings;
   addresses: DeliveryAddress[];
@@ -150,6 +153,7 @@ interface AppContextType {
   
   markNotificationRead: (id: string) => void;
   addAddress: (address: Omit<DeliveryAddress, 'id'>) => void;
+  deleteAddress: (addressId: string) => void;
 
   // Service Areas & PIN Code Controls
   servicePincodes: ServicePincode[];
@@ -292,34 +296,62 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => { localStorage.setItem('qp_orders', JSON.stringify(orders)); }, [orders]);
   useEffect(() => { localStorage.setItem('qp_notifications', JSON.stringify(notifications)); }, [notifications]);
 
+  const syncOrdersFromRemote = useCallback((remoteOrders: Order[]) => {
+    setOrders(prev => {
+      const map = new Map<string, Order>();
+      prev.forEach(o => map.set(o.id, o));
+      remoteOrders.forEach(ro => {
+        const existing = map.get(ro.id);
+        map.set(ro.id, { ...existing, ...ro });
+      });
+      return Array.from(map.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    });
+  }, []);
+
   // Real-time Firestore orders subscription
   useEffect(() => {
     if (!db) return;
     const unsub = onSnapshot(collection(db, 'orders'), (snapshot) => {
-      if (snapshot.empty) return;
       const remoteOrders: Order[] = [];
       snapshot.forEach(docSnap => {
+        const data = docSnap.data();
         remoteOrders.push({
           id: docSnap.id,
-          ...docSnap.data()
+          ...data,
+          status: (data?.status || 'placed').toString(),
+          items: data?.items || [],
+          partnerResponseLogs: data?.partnerResponseLogs || [],
+          deliveryPincode: data?.deliveryPincode || data?.address?.pincode || '401102',
+          assignedPartnerId: data?.assignedPartnerId || data?.deliveryPartnerId || null,
+          deliveryPartnerId: data?.deliveryPartnerId || data?.assignedPartnerId || null
         } as Order);
       });
 
-      setOrders(prev => {
-        const map = new Map<string, Order>();
-        prev.forEach(o => map.set(o.id, o));
-        remoteOrders.forEach(ro => {
-          const existing = map.get(ro.id);
-          map.set(ro.id, { ...existing, ...ro });
-        });
-        return Array.from(map.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      syncOrdersFromRemote(remoteOrders);
+    }, async (err) => {
+      console.error("[AppContext onSnapshot orders] Error details:", {
+        code: err.code,
+        message: err.message,
+        name: err.name,
+        timestamp: new Date().toISOString(),
+        authUid: auth.currentUser?.uid || 'unauthenticated'
       });
-    }, (err) => {
-      console.warn("Firestore orders onSnapshot notice:", err);
+
+      if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
+        console.warn("[AppContext] Permission denied or unauthenticated. Attempting token refresh...");
+        if (auth.currentUser) {
+          try {
+            await auth.currentUser.getIdToken(true);
+            console.log("[AppContext] Auth ID token refreshed successfully.");
+          } catch (refreshErr) {
+            console.error("[AppContext] Failed to refresh auth token:", refreshErr);
+          }
+        }
+      }
     });
 
     return () => unsub();
-  }, []);
+  }, [syncOrdersFromRemote]);
   useEffect(() => { localStorage.setItem('qp_faqs', JSON.stringify(faqs)); }, [faqs]);
   useEffect(() => { localStorage.setItem('qp_tickets', JSON.stringify(supportTickets)); }, [supportTickets]);
   useEffect(() => { localStorage.setItem('qp_service_pincodes', JSON.stringify(servicePincodes)); }, [servicePincodes]);
@@ -1157,9 +1189,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const deleteUser = (userId: string) => {
+  const deleteUser = async (userId: string) => {
     setUsers(prev => prev.filter(u => String(u.id) !== String(userId)));
     setPartners(prev => prev.filter(p => String(p.id) !== String(userId)));
+    try {
+      if (db) {
+        await deleteDoc(doc(db, 'users', userId));
+        console.log(`Staff ID ${userId} deleted from Firestore users collection.`);
+      }
+    } catch (e) {
+      console.warn("Firestore deleteDoc notice:", e);
+    }
   };
 
   const logoutUser = () => {
@@ -1354,29 +1394,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Firestore Order Document Persistence
     if (db) {
-      const firestoreOrderData = {
+      const cleanOrderData = JSON.parse(JSON.stringify({
+        ...newOrder,
         id: newOrderId,
         customerId: newOrder.customerId,
         customerName: newOrder.customerName,
         customerPhone: newOrder.customerPhone,
+        address: selectedAddress,
         deliveryAddress: fullDeliveryAddrStr,
         deliveryPincode: deliveryPincodeStr,
         deliveryLocation: {
           latitude: deliveryLat,
           longitude: deliveryLng
         },
-        status: 'PLACED',
+        items: newOrder.items || [],
+        status: 'placed',
         assignedPartnerId: null,
+        deliveryPartnerId: null,
+        deliveryPartnerName: null,
+        partnerResponseLogs: [],
         subtotal: cartSubtotal,
         deliveryFee: deliveryFee,
         total: total,
         paymentMethod: paymentMethod,
         paymentStatus: initialPaymentStatus,
         createdAt: nowIso,
+        pickupLocation: 'QuickPal Dark Store #1 - Green Park',
+        deliveryTimeMins: 10,
         notes: notes || ''
-      };
+      }));
 
-      setDoc(doc(db, 'orders', newOrderId), firestoreOrderData).catch(err => {
+      setDoc(doc(db, 'orders', newOrderId), cleanOrderData).then(() => {
+        console.log('Order successfully synced to Firestore orders collection:', newOrderId);
+      }).catch(err => {
         console.warn('Firestore setDoc orders error notice:', err);
       });
     }
@@ -1729,6 +1779,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       })
     );
 
+    if (db) {
+      const orderRef = doc(db, 'orders', orderId);
+      updateDoc(orderRef, {
+        status: 'store_accepted',
+        storeInfo: defaultStore,
+        storeAcceptedAt: nowIso
+      }).catch(err => {
+        console.warn('Firestore storeAcceptOrder update error:', err);
+      });
+    }
+
     // Push notification to Delivery Partners broadcast
     sendNotification({
       targetRole: 'partner',
@@ -1759,6 +1820,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Admin/Partner manual status updater
   const updateOrderStatusByAdmin = (orderId: string, status: OrderStatus, partnerId?: string) => {
+    let finalPartnerId: string | undefined = undefined;
+    let finalPartnerName: string | undefined = undefined;
+
     setOrders(prev =>
       prev.map(ord => {
         if (ord.id !== orderId) return ord;
@@ -1771,14 +1835,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             pName = match.name;
           }
         }
+        finalPartnerId = pId;
+        finalPartnerName = pName;
         return {
           ...ord,
           status,
           deliveryPartnerId: pId,
+          assignedPartnerId: pId,
           deliveryPartnerName: pName
         };
       })
     );
+
+    if (db) {
+      const orderRef = doc(db, 'orders', orderId);
+      const updateData: Record<string, any> = { status };
+      if (finalPartnerId) {
+        updateData.deliveryPartnerId = finalPartnerId;
+        updateData.assignedPartnerId = finalPartnerId;
+      }
+      if (finalPartnerName) {
+        updateData.deliveryPartnerName = finalPartnerName;
+      }
+      updateDoc(orderRef, updateData).catch(err => {
+        console.warn('Firestore updateOrderStatusByAdmin error notice:', err);
+      });
+    }
 
     const statusMap: Record<OrderStatus, string> = {
       placed: 'Order placed by customer',
@@ -1952,6 +2034,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setSelectedAddress(newAddr);
   };
 
+  const deleteAddress = (addressId: string) => {
+    setAddresses(prev => {
+      const updated = prev.filter(a => a.id !== addressId);
+      if (selectedAddress?.id === addressId) {
+        if (updated.length > 0) {
+          setSelectedAddress(updated[0]);
+        } else {
+          const defaultFallback: DeliveryAddress = {
+            id: 'addr-' + Date.now(),
+            label: 'Home',
+            addressLine: 'Station Road, Near Saphale Railway Station',
+            area: 'Saphale East',
+            city: 'Palghar',
+            pincode: '401102',
+            isDefault: true,
+            latitude: 19.5785,
+            longitude: 72.8220
+          };
+          setSelectedAddress(defaultFallback);
+          return [defaultFallback];
+        }
+      }
+      return updated;
+    });
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1977,6 +2085,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         partners,
         coupons,
         orders,
+        setOrders,
+        syncOrdersFromRemote,
         notifications,
         paymentSettings,
         addresses,
@@ -2023,6 +2133,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toggleCouponActive,
         markNotificationRead,
         addAddress,
+        deleteAddress,
         servicePincodes,
         addServicePincode,
         updateServicePincode,
