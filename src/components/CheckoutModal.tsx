@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { PaymentMethod } from '../types';
 import { registerAuthorizedUtr } from '../utils/paymentVerifier';
+import { isValidIndianMobile, cleanIndianMobile } from '../utils/phonePrivacy';
 import { AddAddressModal } from './AddAddressModal';
 import {
   X,
@@ -30,7 +31,8 @@ import {
   XCircle,
   Plus,
   Navigation,
-  Trash2
+  Trash2,
+  Phone
 } from 'lucide-react';
 
 interface CheckoutModalProps {
@@ -45,6 +47,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   onOrderSuccess,
 }) => {
   const {
+    currentUser,
     cartItems,
     cartSubtotal,
     selectedAddress,
@@ -60,9 +63,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   } = useApp();
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi_qr');
+  const [customerPhone, setCustomerPhone] = useState(currentUser?.phone || '');
   const [couponCode, setCouponCode] = useState('');
   const [couponError, setCouponError] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
+
+  useEffect(() => {
+    if (currentUser?.phone && !customerPhone) {
+      setCustomerPhone(currentUser.phone);
+    }
+  }, [currentUser?.phone]);
   
   // Checkout Multi-Step State: 'details' | 'verify_payment' | 'transaction_failed'
   const [checkoutStep, setCheckoutStep] = useState<'details' | 'verify_payment' | 'transaction_failed'>('details');
@@ -171,6 +181,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const handleProceedToVerification = () => {
     setErrorMsg('');
 
+    // Mandatory Phone Number Check (Strict requirement)
+    const cleanPhone = cleanIndianMobile(customerPhone);
+    if (!customerPhone.trim() || !isValidIndianMobile(cleanPhone)) {
+      setErrorMsg(
+        '⚠️ Customer Mobile Number is strictly mandatory! Please enter a valid 10-digit Indian mobile number (e.g. 9823456789) to receive your Doorstep Delivery Verification OTP.'
+      );
+      return;
+    }
+
     if (!isPincodeApproved(selectedAddress.pincode)) {
       setErrorMsg(
         `Sorry! QuickPal is currently available only in the 401102 service area (Saphale East & West). Delivery is not available for PIN Code ${selectedAddress.pincode}.`
@@ -191,6 +210,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Step 2: Confirm Payment & Finalize Order Placement
   const handleConfirmAndPay = () => {
     setErrorMsg('');
+
+    // Mandatory Phone check again
+    const cleanPhone = cleanIndianMobile(customerPhone);
+    if (!customerPhone.trim() || !isValidIndianMobile(cleanPhone)) {
+      setErrorMsg('⚠️ Customer mobile number is strictly mandatory for delivery verification.');
+      setCheckoutStep('details');
+      return;
+    }
 
     if (!isPincodeApproved(selectedAddress.pincode)) {
       setErrorMsg(
@@ -241,7 +268,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         ? utrNumber.trim()
         : cardDetails.otp;
 
-      const res = placeOrder(paymentMethod, orderNotes, rawRef, activeSubmittedAmt, screenshotUrl || undefined);
+      const res = placeOrder(paymentMethod, orderNotes, rawRef, activeSubmittedAmt, screenshotUrl || undefined, cleanPhone);
       setIsVerifying(false);
 
       if (res.success && res.orderId) {
@@ -266,7 +293,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       setErrorMsg(`Cash on Delivery is unavailable for total ₹${total}.`);
       return;
     }
-    const res = placeOrder('cod', orderNotes);
+    const cleanPhone = cleanIndianMobile(customerPhone);
+    const res = placeOrder('cod', orderNotes, undefined, undefined, undefined, cleanPhone);
     if (res.success && res.orderId) {
       onOrderSuccess(res.orderId);
     } else {
@@ -357,6 +385,58 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <span>{errorMsg}</span>
               </div>
             )}
+
+            {/* Mandatory Customer Mobile Number & Privacy Shield */}
+            <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-2 border-orange-300 dark:border-orange-800 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black uppercase text-orange-950 dark:text-orange-200 flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-orange-600" />
+                  Customer Mobile Number <span className="text-rose-600 font-extrabold">*</span>
+                </h3>
+                <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-emerald-600" /> 100% Privacy Masked
+                </span>
+              </div>
+
+              <div className="relative">
+                <div className="flex items-center">
+                  <span className="inline-flex items-center px-3.5 py-2.5 rounded-l-2xl border border-r-0 border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-xs font-black select-none">
+                    🇮🇳 +91
+                  </span>
+                  <input
+                    type="tel"
+                    maxLength={10}
+                    value={customerPhone}
+                    onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="Enter 10-digit mobile number"
+                    className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-r-2xl px-3.5 py-2.5 text-sm font-black font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900 dark:text-white"
+                  />
+                </div>
+                {customerPhone && (
+                  <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                    {isValidIndianMobile(customerPhone) ? (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-black flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Valid Mobile Number for OTP Verification
+                      </span>
+                    ) : (
+                      <span className="text-rose-600 dark:text-rose-400 font-bold">
+                        Please enter a valid 10-digit number (e.g. 9823456789)
+                      </span>
+                    )}
+                    <span className="font-mono text-gray-400 font-semibold">
+                      {customerPhone.length}/10
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-2.5 bg-white/80 dark:bg-gray-900/80 rounded-2xl border border-orange-200/80 dark:border-orange-900/50 flex items-start gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <p className="leading-snug">
+                  <strong className="text-gray-900 dark:text-white">Strict Privacy Guarantee:</strong> Your actual number will <span className="underline decoration-orange-500 font-bold">never be revealed</span> to delivery partners. Delivery partners only see a masked contact code (e.g., <code className="font-mono text-orange-600 font-bold">+91 98••••••00 🔒</code>) and call via our secure bridge.
+                </p>
+              </div>
+            </div>
 
             {/* Delivery Address */}
             <div>

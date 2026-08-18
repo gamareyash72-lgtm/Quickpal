@@ -61,10 +61,6 @@ function AppContent() {
     return false;
   };
 
-  const activeOrder = orders.find(
-    o => o.status !== 'delivered' && o.status !== 'cancelled'
-  );
-
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans selection:bg-emerald-500 selection:text-white transition-colors">
       {/* Role Switcher Top Bar */}
@@ -221,19 +217,6 @@ function AppContent() {
             <span className="text-[10px] font-bold">Wishlist</span>
           </div>
         </div>
-
-        {/* Live status ticker banner */}
-        {activeOrder && (
-          <div
-            onClick={() => setTrackingOrderId(activeOrder.id)}
-            className="hidden md:flex bg-emerald-100 dark:bg-emerald-950/80 rounded-full px-4 py-1.5 items-center gap-2.5 animate-pulse cursor-pointer border border-emerald-300 dark:border-emerald-800"
-          >
-            <div className="w-2 h-2 rounded-full bg-emerald-600"></div>
-            <p className="text-xs font-bold text-emerald-800 dark:text-emerald-300 italic">
-              Order #{activeOrder.id} arriving in {activeOrder.deliveryTimeMins} mins...
-            </p>
-          </div>
-        )}
 
         <div className="flex gap-4 items-center">
           <button

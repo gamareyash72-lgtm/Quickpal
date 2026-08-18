@@ -138,6 +138,9 @@ export interface Order {
   pickupLocation: string | { latitude: number; longitude: number };
   deliveryLocation: string | { latitude: number; longitude: number };
   deliveryTimeMins: number;
+  deliveryOtp?: string;
+  deliveryCompletedWithOtp?: boolean;
+  maskedCustomerPhone?: string;
   notes?: string;
 }
 
@@ -206,6 +209,8 @@ export interface PaymentSettings {
   razorpayKeyId?: string;
   stripePublicKey?: string;
   checkoutNote?: string;
+  customerCarePhone?: string;
+  customerCareMasked?: boolean;
 }
 
 export interface FAQItem {

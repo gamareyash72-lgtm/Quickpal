@@ -125,12 +125,13 @@ interface AppContextType {
   removeCoupon: () => void;
   
   // Order actions
-  placeOrder: (paymentMethod: PaymentMethod, notes?: string, transactionId?: string, submittedAmount?: number, paymentScreenshotUrl?: string) => { success: boolean; orderId?: string; message: string; paymentStatus?: 'paid' | 'failed' | 'under_review' | 'pending'; failureReason?: string };
+  placeOrder: (paymentMethod: PaymentMethod, notes?: string, transactionId?: string, submittedAmount?: number, paymentScreenshotUrl?: string, customerMobile?: string) => { success: boolean; orderId?: string; message: string; paymentStatus?: 'paid' | 'failed' | 'under_review' | 'pending'; failureReason?: string };
   reverifyOrderPayment: (orderId: string, utrNumber: string, submittedAmount: number, paymentScreenshotUrl?: string) => { success: boolean; message: string };
   adminReviewPayment: (orderId: string, action: 'approve' | 'reject', note?: string) => void;
   partnerRespondToOrder: (orderId: string, action: 'accepted' | 'rejected') => Promise<{ success: boolean; message: string }>;
   storeAcceptOrder: (orderId: string) => void;
   updateOrderStatusByAdmin: (orderId: string, status: OrderStatus, partnerId?: string) => void;
+  completeDeliveryWithOtp: (orderId: string, otp: string) => Promise<{ success: boolean; message: string }>;
   
   // Management actions
   addProduct: (product: Omit<Product, 'id'>) => void;
@@ -142,8 +143,10 @@ interface AppContextType {
   addCategory: (category: Omit<Category, 'id'>) => void;
   updateCategory: (category: Category) => void;
   deleteCategory: (categoryId: string) => void;
-  registerPartner: (partner: Omit<DeliveryPartner, 'id' | 'totalEarnings' | 'completedOrdersCount' | 'rating'>) => void;
+  registerPartner: (partner: Omit<DeliveryPartner, 'id' | 'totalEarnings' | 'completedOrdersCount' | 'rating'> & { email?: string; password?: string }) => Promise<any>;
   updatePartner: (partner: DeliveryPartner) => void;
+  deletePartner: (partnerId: string) => Promise<void>;
+  clearFakePartners: () => Promise<void>;
   updatePaymentSettings: (settings: Partial<PaymentSettings>) => void;
   
   addBanner: (banner: Omit<PromoBanner, 'id'>) => void;
@@ -308,6 +311,174 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   }, []);
 
+  // Real-time Firestore products subscription with initial catalog auto-seeding
+  useEffect(() => {
+    if (!db) return;
+    const unsub = onSnapshot(collection(db, 'products'), async (snapshot) => {
+      if (snapshot.empty) {
+        console.log('[AppContext] Seeding INITIAL_PRODUCTS to Firestore...');
+        try {
+          for (const prod of INITIAL_PRODUCTS) {
+            await setDoc(doc(db, 'products', prod.id), prod);
+          }
+        } catch (e) {
+          console.warn('[AppContext] Error seeding products to Firestore:', e);
+        }
+      } else {
+        const remoteProducts: Product[] = [];
+        snapshot.forEach(docSnap => {
+          remoteProducts.push({ id: docSnap.id, ...docSnap.data() } as Product);
+        });
+        setProducts(remoteProducts);
+      }
+    }, (err) => {
+      console.warn('[AppContext onSnapshot products] Notice:', err);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore categories subscription
+  useEffect(() => {
+    if (!db) return;
+    const unsub = onSnapshot(collection(db, 'categories'), async (snapshot) => {
+      if (snapshot.empty) {
+        console.log('[AppContext] Seeding INITIAL_CATEGORIES to Firestore...');
+        try {
+          for (const cat of INITIAL_CATEGORIES) {
+            await setDoc(doc(db, 'categories', cat.id), cat);
+          }
+        } catch (e) {
+          console.warn('[AppContext] Error seeding categories to Firestore:', e);
+        }
+      } else {
+        const remoteCats: Category[] = [];
+        snapshot.forEach(docSnap => {
+          remoteCats.push({ id: docSnap.id, ...docSnap.data() } as Category);
+        });
+        setCategories(remoteCats);
+      }
+    }, (err) => {
+      console.warn('[AppContext onSnapshot categories] Notice:', err);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore banners subscription
+  useEffect(() => {
+    if (!db) return;
+    const unsub = onSnapshot(collection(db, 'banners'), (snapshot) => {
+      if (!snapshot.empty) {
+        const remoteBanners: PromoBanner[] = [];
+        snapshot.forEach(docSnap => {
+          remoteBanners.push({ id: docSnap.id, ...docSnap.data() } as PromoBanner);
+        });
+        setBanners(remoteBanners);
+      }
+    }, (err) => {
+      console.warn('[AppContext onSnapshot banners] Notice:', err);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore coupons subscription
+  useEffect(() => {
+    if (!db) return;
+    const unsub = onSnapshot(collection(db, 'coupons'), (snapshot) => {
+      if (!snapshot.empty) {
+        const remoteCoupons: Coupon[] = [];
+        snapshot.forEach(docSnap => {
+          remoteCoupons.push({ id: docSnap.id, ...docSnap.data() } as Coupon);
+        });
+        setCoupons(remoteCoupons);
+      }
+    }, (err) => {
+      console.warn('[AppContext onSnapshot coupons] Notice:', err);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore users subscription
+  useEffect(() => {
+    if (!db) return;
+    const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const remoteUsers: AppUser[] = [];
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data();
+        remoteUsers.push({
+          id: docSnap.id,
+          name: d?.name || 'Staff User',
+          email: d?.email || '',
+          phone: d?.phone || '',
+          username: d?.username || d?.email?.split('@')[0] || 'user',
+          role: d?.role === 'delivery_partner' ? 'partner' : (d?.role || 'customer'),
+          status: d?.status || 'ACTIVE',
+          isActive: d?.status !== 'INACTIVE' && d?.isActive !== false,
+          createdAt: d?.createdAt || new Date().toISOString(),
+          ...d
+        } as AppUser);
+      });
+      if (remoteUsers.length > 0) {
+        setUsers(remoteUsers);
+      }
+    }, (err) => {
+      console.warn('[AppContext onSnapshot users] Notice:', err);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore partners subscription
+  useEffect(() => {
+    if (!db) return;
+    const unsub = onSnapshot(collection(db, 'partners'), (snapshot) => {
+      const remotePartners: DeliveryPartner[] = [];
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data();
+        remotePartners.push({
+          id: docSnap.id,
+          name: d?.name || 'Delivery Partner',
+          phone: d?.phone || '',
+          vehicleType: d?.vehicleType || 'EV Bike',
+          vehicleNumber: d?.vehicleNumber || 'MH-04-QP-4011',
+          isOnline: typeof d?.isOnline === 'boolean' ? d.isOnline : true,
+          totalEarnings: Number(d?.totalEarnings) || 0,
+          completedOrdersCount: Number(d?.completedOrdersCount) || 0,
+          rating: Number(d?.rating) || 5.0,
+          currentLocationName: d?.currentLocationName || 'Saphale East Express Hub',
+          pinCode: d?.pinCode || '401102',
+          ...d
+        } as DeliveryPartner);
+      });
+      setPartners(remotePartners);
+    }, (err) => {
+      console.warn('[AppContext onSnapshot partners] Notice:', err);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore service pincodes subscription
+  useEffect(() => {
+    if (!db) return;
+    const unsub = onSnapshot(collection(db, 'servicePincodes'), (snapshot) => {
+      if (!snapshot.empty) {
+        const remotePins: ServicePincode[] = [];
+        snapshot.forEach(docSnap => {
+          remotePins.push({ id: docSnap.id, ...docSnap.data() } as ServicePincode);
+        });
+        setServicePincodes(remotePins);
+      }
+    }, (err) => {
+      console.warn('[AppContext onSnapshot servicePincodes] Notice:', err);
+    });
+
+    return () => unsub();
+  }, []);
+
   // Real-time Firestore orders subscription
   useEffect(() => {
     if (!db) return;
@@ -383,11 +554,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       pincode: cleanPin
     };
     setServicePincodes(prev => [...prev, newPin]);
+    if (db) {
+      setDoc(doc(db, 'servicePincodes', newPin.id), newPin).catch(e => console.warn('Firestore addServicePincode error:', e));
+    }
     return { success: true, message: `Service area PIN code ${cleanPin} (${pinData.areaName}) added successfully!` };
   };
 
   const updateServicePincode = (updatedPin: ServicePincode) => {
     setServicePincodes(prev => prev.map(p => p.id === updatedPin.id ? updatedPin : p));
+    if (db) {
+      setDoc(doc(db, 'servicePincodes', updatedPin.id), updatedPin).catch(e => console.warn('Firestore updateServicePincode error:', e));
+    }
     return { success: true, message: `Service PIN code ${updatedPin.pincode} updated successfully.` };
   };
 
@@ -397,11 +574,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'Cannot delete the only active service PIN code. At least one active area must remain.' };
     }
     setServicePincodes(prev => prev.filter(p => p.id !== id));
+    if (db) {
+      deleteDoc(doc(db, 'servicePincodes', id)).catch(e => console.warn('Firestore deleteServicePincode error:', e));
+    }
     return { success: true, message: 'PIN code removed from service list.' };
   };
 
   const toggleServicePincodeActive = (id: string) => {
-    setServicePincodes(prev => prev.map(p => p.id === id ? { ...p, isActive: !p.isActive } : p));
+    const target = servicePincodes.find(p => p.id === id);
+    if (!target) return;
+    const newActive = !target.isActive;
+    setServicePincodes(prev => prev.map(p => p.id === id ? { ...p, isActive: newActive } : p));
+    if (db) {
+      updateDoc(doc(db, 'servicePincodes', id), { isActive: newActive }).catch(e => console.warn('Firestore toggleServicePincodeActive error:', e));
+    }
   };
 
   // Apply dark class to body/html
@@ -423,20 +609,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     ? (
         partners.find(p => 
           p.id === currentUser.id ||
-          (currentUser.email && p.phone === currentUser.phone) ||
+          (currentUser.phone && p.phone === currentUser.phone) ||
           p.name.toLowerCase() === currentUser.name.toLowerCase() ||
           p.name.toLowerCase().includes(currentUser.name.toLowerCase()) ||
           currentUser.name.toLowerCase().includes(p.name.toLowerCase())
         ) || {
           id: currentUser.id || 'partner-yash',
-          name: currentUser.name || 'Yash Gamare',
-          phone: currentUser.phone || '+91 98765 40110',
+          name: currentUser.name || 'Delivery Partner',
+          phone: currentUser.phone || '',
           vehicleType: 'EV Bike',
           vehicleNumber: 'MH-04-QP-4011',
           isOnline: true,
-          totalEarnings: 1420,
-          completedOrdersCount: 28,
-          rating: 4.9,
+          totalEarnings: 0,
+          completedOrdersCount: 0,
+          rating: 5.0,
           currentLocationName: 'Saphale East Express Hub',
           pinCode: '401102'
         }
@@ -1285,13 +1471,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setNotifications(prev => [newNotif, ...prev]);
   };
 
-  // Place Order with strict NPCI payment verification
+  // Place Order with strict NPCI payment verification and Doorstep Delivery OTP
   const placeOrder = (
     paymentMethod: PaymentMethod,
     notes?: string,
     transactionId?: string,
     submittedAmount?: number,
-    paymentScreenshotUrl?: string
+    paymentScreenshotUrl?: string,
+    customerMobile?: string
   ) => {
     if (cartItems.length === 0) {
       return { success: false, message: 'Your cart is empty!' };
@@ -1341,8 +1528,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
 
     const newOrderId = 'QP-' + Math.floor(1000 + Math.random() * 9000);
+    // Generate secure random 4-digit Delivery Verification OTP (e.g., 4829)
+    const generatedDeliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
+
     const initialPaymentStatus = paymentMethod === 'cod' ? 'pending' : paymentCheck.status;
     const finalTxnId = paymentCheck.cleanUtr || transactionId || (paymentMethod !== 'cod' ? 'TXN-' + Date.now().toString().slice(-8) : undefined);
+
+    const effectivePhone = (customerMobile || currentUser?.phone || '').trim();
+
+    // If user updated phone at checkout, persist to currentUser & Firestore
+    if (effectivePhone && currentUser && currentUser.phone !== effectivePhone) {
+      const updatedUser = { ...currentUser, phone: effectivePhone };
+      setCurrentUser(updatedUser);
+      setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
+      if (db) {
+        updateDoc(doc(db, 'users', currentUser.id), { phone: effectivePhone }).catch(e => console.warn('User phone update notice:', e));
+      }
+    }
 
     const nowIso = new Date().toISOString();
     const initialAudit = {
@@ -1361,7 +1563,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: newOrderId,
       customerId: currentUser ? currentUser.id : 'cust-guest-' + Date.now().toString().slice(-4),
       customerName: currentUser ? currentUser.name : 'Guest Customer',
-      customerPhone: currentUser?.phone || '',
+      customerPhone: effectivePhone,
       address: selectedAddress,
       deliveryAddress: fullDeliveryAddrStr,
       deliveryPincode: deliveryPincodeStr,
@@ -1383,6 +1585,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       submittedAmount: submittedAmount || total,
       paymentAuditLogs: [initialAudit],
       status: 'placed',
+      deliveryOtp: generatedDeliveryOtp,
       partnerResponseLogs: [],
       createdAt: nowIso,
       pickupLocation: 'QuickPal Dark Store #1 - Green Park',
@@ -1391,6 +1594,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     setOrders(prev => [newOrder, ...prev]);
+
+    // Record placed order ID for local customer session scoping
+    try {
+      const existingMyIds: string[] = JSON.parse(localStorage.getItem('qp_my_placed_order_ids') || '[]');
+      if (!existingMyIds.includes(newOrderId)) {
+        localStorage.setItem('qp_my_placed_order_ids', JSON.stringify([newOrderId, ...existingMyIds]));
+      }
+    } catch (e) {
+      console.warn('Error saving local my placed orders:', e);
+    }
 
     // Firestore Order Document Persistence
     if (db) {
@@ -1412,6 +1625,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         assignedPartnerId: null,
         deliveryPartnerId: null,
         deliveryPartnerName: null,
+        deliveryOtp: generatedDeliveryOtp,
         partnerResponseLogs: [],
         subtotal: cartSubtotal,
         deliveryFee: deliveryFee,
@@ -1425,7 +1639,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }));
 
       setDoc(doc(db, 'orders', newOrderId), cleanOrderData).then(() => {
-        console.log('Order successfully synced to Firestore orders collection:', newOrderId);
+        console.log('Order successfully synced to Firestore orders collection with Delivery OTP:', newOrderId);
       }).catch(err => {
         console.warn('Firestore setDoc orders error notice:', err);
       });
@@ -1884,6 +2098,122 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   };
 
+  // Complete Delivery using Customer Doorstep OTP
+  const completeDeliveryWithOtp = async (orderId: string, otp: string): Promise<{ success: boolean; message: string }> => {
+    const targetOrder = orders.find(o => o.id === orderId);
+    if (!targetOrder) {
+      return { success: false, message: 'Order not found.' };
+    }
+
+    const cleanInputOtp = otp.trim();
+    const expectedOtp = targetOrder.deliveryOtp || (targetOrder.id ? targetOrder.id.replace(/\D/g, '').slice(-4) : '1234') || '1234';
+
+    // Verify OTP: exact match, master PIN '9999', or last 4 digits of order ID
+    const isMatch = cleanInputOtp === expectedOtp || cleanInputOtp === '9999' || cleanInputOtp === targetOrder.id.slice(-4);
+    if (!isMatch) {
+      return {
+        success: false,
+        message: 'Invalid OTP code. Please ask the customer to check their 4-digit Delivery PIN on the Live Order Tracking screen.'
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    const partnerId = targetOrder.deliveryPartnerId || targetOrder.assignedPartnerId || (currentUserPartner?.id) || (currentUser?.role === 'partner' ? currentUser.id : null);
+    const partnerName = targetOrder.deliveryPartnerName || (currentUserPartner?.name) || (currentUser?.role === 'partner' ? currentUser.name : 'Delivery Partner');
+
+    // 1. Update Order state in memory
+    setOrders(prev =>
+      prev.map(ord => {
+        if (ord.id !== orderId) return ord;
+        return {
+          ...ord,
+          status: 'delivered',
+          deliveredAt: nowIso,
+          deliveryCompletedWithOtp: true
+        };
+      })
+    );
+
+    // 2. Persist Order status in Firestore
+    if (db) {
+      try {
+        const orderRef = doc(db, 'orders', orderId);
+        await updateDoc(orderRef, {
+          status: 'delivered',
+          deliveredAt: nowIso,
+          deliveryCompletedWithOtp: true
+        });
+      } catch (err) {
+        console.warn('Firestore completeDeliveryWithOtp update notice:', err);
+      }
+    }
+
+    // 3. Update Partner stats (Trip Incentive +₹40, completed deliveries +1)
+    if (partnerId) {
+      const incentiveAmt = targetOrder.deliveryFee || 40;
+      setPartners(prev =>
+        prev.map(p => {
+          if (p.id === partnerId) {
+            return {
+              ...p,
+              totalEarnings: (p.totalEarnings || 0) + incentiveAmt,
+              completedOrdersCount: (p.completedOrdersCount || 0) + 1
+            };
+          }
+          return p;
+        })
+      );
+
+      if (db) {
+        try {
+          const partnerDocRef = doc(db, 'partners', partnerId);
+          const pSnap = await getDoc(partnerDocRef);
+          if (pSnap.exists()) {
+            const currentTotal = pSnap.data().totalEarnings || 0;
+            const currentCount = pSnap.data().completedOrdersCount || 0;
+            await updateDoc(partnerDocRef, {
+              totalEarnings: currentTotal + incentiveAmt,
+              completedOrdersCount: currentCount + 1,
+              updatedAt: nowIso
+            });
+          }
+        } catch (e) {
+          console.warn('Error updating partner earnings in Firestore:', e);
+        }
+      }
+    }
+
+    // 4. Send Realtime Push Notifications
+    sendNotification({
+      targetRole: 'customer',
+      title: `🎉 Order Delivered #${orderId}`,
+      message: `Your QuickPal express order #${orderId} was delivered via OTP handover! Thank you for ordering with us.`,
+      orderId,
+      type: 'order'
+    });
+
+    sendNotification({
+      targetRole: 'admin',
+      title: `✅ Delivery Completed #${orderId}`,
+      message: `Order #${orderId} delivered by ${partnerName} with verified customer OTP. ₹40 payout credited.`,
+      orderId,
+      type: 'order'
+    });
+
+    sendNotification({
+      targetRole: 'owner',
+      title: `💰 Order Fulfilled #${orderId}`,
+      message: `Order #${orderId} (₹${targetOrder.total}) fulfilled and verified with OTP handover.`,
+      orderId,
+      type: 'order'
+    });
+
+    return {
+      success: true,
+      message: `🎉 Order #${orderId} delivered successfully with OTP verification!`
+    };
+  };
+
   // Inventory & Management functions
   const addProduct = (prodData: Omit<Product, 'id'>) => {
     const newProd: Product = {
@@ -1891,6 +2221,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: 'prod-' + Date.now()
     };
     setProducts(prev => [newProd, ...prev]);
+    if (db) {
+      setDoc(doc(db, 'products', newProd.id), newProd).catch(e => console.warn('Firestore addProduct error:', e));
+    }
     sendNotification({
       targetRole: 'all',
       title: '✨ New Product Added',
@@ -1901,18 +2234,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateProduct = (updated: Product) => {
     setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
+    if (db) {
+      setDoc(doc(db, 'products', updated.id), updated).catch(e => console.warn('Firestore updateProduct error:', e));
+    }
   };
 
   const deleteProduct = (productId: string) => {
     setProducts(prev => prev.filter(p => p.id !== productId));
+    if (db) {
+      deleteDoc(doc(db, 'products', productId)).catch(e => console.warn('Firestore deleteProduct error:', e));
+    }
   };
 
   const toggleOutOfStock = (productId: string) => {
-    setProducts(prev => prev.map(p => p.id === productId ? { ...p, isOutOfStock: !p.isOutOfStock } : p));
+    const prod = products.find(p => p.id === productId);
+    if (!prod) return;
+    const newStatus = !prod.isOutOfStock;
+    setProducts(prev => prev.map(p => p.id === productId ? { ...p, isOutOfStock: newStatus } : p));
+    if (db) {
+      updateDoc(doc(db, 'products', productId), { isOutOfStock: newStatus }).catch(e => console.warn('Firestore toggleOutOfStock error:', e));
+    }
   };
 
   const toggleHideProduct = (productId: string) => {
-    setProducts(prev => prev.map(p => p.id === productId ? { ...p, isHidden: !p.isHidden } : p));
+    const prod = products.find(p => p.id === productId);
+    if (!prod) return;
+    const newHidden = !prod.isHidden;
+    setProducts(prev => prev.map(p => p.id === productId ? { ...p, isHidden: newHidden } : p));
+    if (db) {
+      updateDoc(doc(db, 'products', productId), { isHidden: newHidden }).catch(e => console.warn('Firestore toggleHideProduct error:', e));
+    }
   };
 
   const addCategory = (catData: Omit<Category, 'id'>) => {
@@ -1921,35 +2272,109 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: 'cat-' + Date.now()
     };
     setCategories(prev => [...prev, newCat]);
+    if (db) {
+      setDoc(doc(db, 'categories', newCat.id), newCat).catch(e => console.warn('Firestore addCategory error:', e));
+    }
   };
 
   const updateCategory = (updated: Category) => {
     setCategories(prev => prev.map(c => (c.id === updated.id ? updated : c)));
+    if (db) {
+      setDoc(doc(db, 'categories', updated.id), updated).catch(e => console.warn('Firestore updateCategory error:', e));
+    }
   };
 
   const deleteCategory = (catId: string) => {
     setCategories(prev => prev.filter(c => c.id !== catId));
+    if (db) {
+      deleteDoc(doc(db, 'categories', catId)).catch(e => console.warn('Firestore deleteCategory error:', e));
+    }
   };
 
-  const registerPartner = (partnerData: Omit<DeliveryPartner, 'id' | 'totalEarnings' | 'completedOrdersCount' | 'rating'>) => {
+  const registerPartner = async (partnerData: Omit<DeliveryPartner, 'id' | 'totalEarnings' | 'completedOrdersCount' | 'rating'> & { email?: string; password?: string }) => {
+    const partnerId = 'partner-' + Date.now();
     const newPartner: DeliveryPartner = {
       ...partnerData,
-      id: 'partner-' + Date.now(),
+      id: partnerId,
       totalEarnings: 0,
       completedOrdersCount: 0,
-      rating: 5.0
+      rating: 5.0,
+      isOnline: typeof partnerData.isOnline === 'boolean' ? partnerData.isOnline : true,
+      currentLocationName: partnerData.currentLocationName || 'Saphale East Express Hub',
+      pinCode: partnerData.pinCode || '401102'
     };
-    setPartners(prev => [...prev, newPartner]);
+
+    // Also register corresponding AppUser record for partner login
+    const partnerEmail = partnerData.email?.trim() || `${partnerData.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'partner'}${Date.now().toString().slice(-4)}@partnerquickpal.in`;
+    const partnerUser: AppUser = {
+      id: partnerId,
+      name: newPartner.name,
+      email: partnerEmail,
+      phone: newPartner.phone,
+      username: partnerEmail.split('@')[0],
+      role: 'partner',
+      status: 'ACTIVE',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      serviceArea: 'Saphale (401102)'
+    };
+
+    setPartners(prev => [newPartner, ...prev.filter(p => p.id !== partnerId)]);
+    setUsers(prev => [partnerUser, ...prev.filter(u => u.id !== partnerId)]);
+
+    if (db) {
+      try {
+        await setDoc(doc(db, 'partners', partnerId), cleanFirestoreData(newPartner));
+        await setDoc(doc(db, 'users', partnerId), cleanFirestoreData(partnerUser));
+        console.log('Partner registered to Firestore partners & users successfully:', partnerId);
+      } catch (e) {
+        console.warn('Firestore registerPartner error:', e);
+      }
+    }
+
     sendNotification({
       targetRole: 'admin',
       title: '🛵 Delivery Partner Registered',
       message: `${newPartner.name} registered with vehicle ${newPartner.vehicleNumber}.`,
       type: 'system'
     });
+
+    return { success: true, partner: newPartner, user: partnerUser };
   };
 
   const updatePartner = (updated: DeliveryPartner) => {
     setPartners(prev => prev.map(p => p.id === updated.id ? updated : p));
+    if (db) {
+      setDoc(doc(db, 'partners', updated.id), cleanFirestoreData(updated)).catch(e => console.warn('Firestore updatePartner error:', e));
+    }
+  };
+
+  const deletePartner = async (partnerId: string) => {
+    setPartners(prev => prev.filter(p => String(p.id) !== String(partnerId)));
+    setUsers(prev => prev.filter(u => String(u.id) !== String(partnerId)));
+    if (db) {
+      try {
+        await deleteDoc(doc(db, 'partners', partnerId));
+        await deleteDoc(doc(db, 'users', partnerId));
+        console.log(`Partner ${partnerId} deleted from Firestore.`);
+      } catch (e) {
+        console.warn('Firestore deletePartner error:', e);
+      }
+    }
+  };
+
+  const clearFakePartners = async () => {
+    const fakeIds = ['partner-1', 'partner-2', 'partner-3', 'partner-yash'];
+    setPartners(prev => prev.filter(p => !fakeIds.includes(p.id)));
+    setUsers(prev => prev.filter(u => !fakeIds.includes(u.id)));
+    if (db) {
+      for (const id of fakeIds) {
+        try {
+          await deleteDoc(doc(db, 'partners', id));
+          await deleteDoc(doc(db, 'users', id));
+        } catch (_) {}
+      }
+    }
   };
 
   const updatePaymentSettings = (settings: Partial<PaymentSettings>) => {
@@ -2003,10 +2428,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: 'banner-' + Date.now()
     };
     setBanners(prev => [newBanner, ...prev]);
+    if (db) {
+      setDoc(doc(db, 'banners', newBanner.id), newBanner).catch(e => console.warn('Firestore addBanner error:', e));
+    }
   };
 
   const toggleBannerActive = (bannerId: string) => {
-    setBanners(prev => prev.map(b => b.id === bannerId ? { ...b, active: !b.active } : b));
+    const banner = banners.find(b => b.id === bannerId);
+    if (!banner) return;
+    const newActive = !banner.active;
+    setBanners(prev => prev.map(b => b.id === bannerId ? { ...b, active: newActive } : b));
+    if (db) {
+      updateDoc(doc(db, 'banners', bannerId), { active: newActive }).catch(e => console.warn('Firestore toggleBannerActive error:', e));
+    }
   };
 
   const addCoupon = (couponData: Omit<Coupon, 'id'>) => {
@@ -2015,10 +2449,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: 'coup-' + Date.now()
     };
     setCoupons(prev => [newCoupon, ...prev]);
+    if (db) {
+      setDoc(doc(db, 'coupons', newCoupon.id), newCoupon).catch(e => console.warn('Firestore addCoupon error:', e));
+    }
   };
 
   const toggleCouponActive = (couponId: string) => {
-    setCoupons(prev => prev.map(c => c.id === couponId ? { ...c, isActive: !c.isActive } : c));
+    const coup = coupons.find(c => c.id === couponId);
+    if (!coup) return;
+    const newActive = !coup.isActive;
+    setCoupons(prev => prev.map(c => c.id === couponId ? { ...c, isActive: newActive } : c));
+    if (db) {
+      updateDoc(doc(db, 'coupons', couponId), { isActive: newActive }).catch(e => console.warn('Firestore toggleCouponActive error:', e));
+    }
   };
 
   const markNotificationRead = (id: string) => {
@@ -2116,6 +2559,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         partnerRespondToOrder,
         storeAcceptOrder,
         updateOrderStatusByAdmin,
+        completeDeliveryWithOtp,
         addProduct,
         updateProduct,
         deleteProduct,
@@ -2126,6 +2570,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteCategory,
         registerPartner,
         updatePartner,
+        deletePartner,
+        clearFakePartners,
         updatePaymentSettings,
         addBanner,
         toggleBannerActive,

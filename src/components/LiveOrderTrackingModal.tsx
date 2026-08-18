@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { OrderStatus } from '../types';
 import { printOrderReceipt } from '../utils/printReceipt';
+import { maskPhoneNumber } from '../utils/phonePrivacy';
+import { SecureCallModal } from './SecureCallModal';
 import {
   X,
   Bike,
@@ -12,7 +14,11 @@ import {
   ShieldCheck,
   Zap,
   Navigation,
-  Printer
+  Printer,
+  KeyRound,
+  Lock,
+  Copy,
+  Check
 } from 'lucide-react';
 
 interface LiveOrderTrackingModalProps {
@@ -25,20 +31,31 @@ export const LiveOrderTrackingModal: React.FC<LiveOrderTrackingModalProps> = ({
   onClose,
 }) => {
   const { orders, partners } = useApp();
+  const [copiedOtp, setCopiedOtp] = useState(false);
+  const [showSecureCall, setShowSecureCall] = useState(false);
 
   if (!orderId) return null;
 
   const order = orders.find(o => o.id === orderId);
   if (!order) return null;
 
-  const partner = partners.find(p => p.id === order.deliveryPartnerId);
+  const partner = partners.find(p => p.id === (order.deliveryPartnerId || order.assignedPartnerId));
+  const effectiveOtp = order.deliveryOtp || (order.id ? order.id.replace(/\D/g, '').slice(-4) : '1234') || '1234';
+
+  const handleCopyOtp = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(effectiveOtp);
+      setCopiedOtp(true);
+      setTimeout(() => setCopiedOtp(false), 2000);
+    }
+  };
 
   const steps: { status: OrderStatus; label: string; desc: string }[] = [
     { status: 'placed', label: 'Order Confirmed', desc: 'Received at dark store' },
     { status: 'accepted', label: 'Partner Assigned', desc: partner ? `${partner.name} accepted order` : 'Finding nearby rider...' },
     { status: 'picked_up', label: 'Items Packed & Picked Up', desc: 'Quality checked at warehouse' },
     { status: 'out_for_delivery', label: 'Out for Express Delivery', desc: 'Rider is on the way to your door' },
-    { status: 'delivered', label: 'Order Delivered', desc: 'Handed over at doorstep' },
+    { status: 'delivered', label: 'Order Delivered', desc: 'Verified & handed over via OTP' },
   ];
 
   const getStepIndex = (status: OrderStatus) => {
@@ -81,7 +98,7 @@ export const LiveOrderTrackingModal: React.FC<LiveOrderTrackingModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-5 overflow-y-auto space-y-6 flex-1">
+        <div className="p-5 overflow-y-auto space-y-5 flex-1">
           {/* ETA Card */}
           <div className="bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-200 dark:border-emerald-800 rounded-3xl p-5 text-center relative overflow-hidden">
             <div className="relative z-10 space-y-1">
@@ -97,9 +114,63 @@ export const LiveOrderTrackingModal: React.FC<LiveOrderTrackingModalProps> = ({
             </div>
           </div>
 
-          {/* Delivery Rider Card */}
+          {/* DOORSTEP DELIVERY VERIFICATION OTP CARD */}
+          {order.status !== 'delivered' ? (
+            <div className="bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 rounded-3xl p-5 text-white shadow-lg space-y-3 relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-amber-200" />
+                  <span className="text-xs font-black uppercase tracking-wider text-amber-100">
+                    Doorstep Delivery PIN / OTP
+                  </span>
+                </div>
+                <span className="bg-white/20 backdrop-blur-xs text-white text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Secure Handover
+                </span>
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-amber-100 block">
+                    Your 4-Digit Delivery Code
+                  </span>
+                  <p className="text-3xl sm:text-4xl font-black font-mono tracking-widest text-white drop-shadow-sm">
+                    {effectiveOtp}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyOtp}
+                  className="bg-white text-orange-950 hover:bg-amber-100 font-extrabold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-transform active:scale-95"
+                >
+                  {copiedOtp ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-orange-600" />}
+                  {copiedOtp ? 'Copied!' : 'Copy PIN'}
+                </button>
+              </div>
+
+              <p className="text-[11px] text-amber-100 leading-snug font-medium">
+                🔒 <strong>Instructions:</strong> Share this 4-digit code with the delivery partner <span className="underline font-bold">only after</span> you inspect and receive all your items.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-2xl p-3.5 flex items-center gap-3 text-xs">
+              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-extrabold text-emerald-950 dark:text-emerald-200">
+                  Delivery Completed via Secure OTP Handover
+                </p>
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+                  Verified code: <span className="font-mono font-black">{effectiveOtp}</span>
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Delivery Rider Card with Phone Privacy */}
           {partner && (
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-amber-400 text-emerald-950 flex items-center justify-center font-black text-xl shadow">
                   <Bike className="w-6 h-6" />
@@ -116,15 +187,19 @@ export const LiveOrderTrackingModal: React.FC<LiveOrderTrackingModalProps> = ({
                   <p className="text-[11px] text-gray-500 font-medium">
                     Vehicle: {partner.vehicleType} ({partner.vehicleNumber})
                   </p>
+                  <p className="text-[10px] text-gray-400 font-mono">
+                    Contact: {maskPhoneNumber(partner.phone)}
+                  </p>
                 </div>
               </div>
 
-              <a
-                href={`tel:${partner.phone}`}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow"
+              <button
+                type="button"
+                onClick={() => setShowSecureCall(true)}
+                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow transition-transform active:scale-95"
               >
-                <Phone className="w-3.5 h-3.5" /> Call Rider
-              </a>
+                <Phone className="w-4 h-4" /> Secure Call Rider
+              </button>
             </div>
           )}
 
@@ -198,6 +273,18 @@ export const LiveOrderTrackingModal: React.FC<LiveOrderTrackingModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Customer to Rider Secure VoIP Call Bridge */}
+      {partner && (
+        <SecureCallModal
+          isOpen={showSecureCall}
+          onClose={() => setShowSecureCall(false)}
+          recipientName={partner.name}
+          recipientRole="Assigned Delivery Rider"
+          rawPhoneNumber={partner.phone}
+          orderId={order.id}
+        />
+      )}
     </div>
   );
 };

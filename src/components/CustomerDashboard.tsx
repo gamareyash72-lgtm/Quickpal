@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Product } from '../types';
+import { Product, Order } from '../types';
 import { ProductDetailModal } from './ProductDetailModal';
 import { AddAddressModal } from './AddAddressModal';
 import ganpatiBappaImg from '../assets/images/ganpati_bappa_statue_1786946303732.jpg';
@@ -56,17 +56,33 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     addresses,
     setSelectedAddress,
     deleteAddress,
-    isPincodeApproved
+    isPincodeApproved,
+    currentUser
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'all' | 'featured' | 'under10' | 'deals'>('all');
   const [selectedDetailProduct, setSelectedDetailProduct] = useState<Product | null>(null);
   const [showAddAddressModal, setShowAddAddressModal] = useState(false);
   const [addressToDelete, setAddressToDelete] = useState<{ id: string; label: string; addressLine: string } | null>(null);
+  const [dismissedOrderId, setDismissedOrderId] = useState<string | null>(null);
 
-  // Active trackable order for floating widget
+  // Active trackable order for floating widget (strictly scoped to the currently logged in customer or locally placed order)
+  const isMyCustomerOrder = (order: Order) => {
+    if (currentUser) {
+      if (order.customerId === currentUser.id) return true;
+      if (currentUser.phone && order.customerPhone === currentUser.phone) return true;
+      if (currentUser.name && order.customerName.toLowerCase() === currentUser.name.toLowerCase()) return true;
+    }
+    try {
+      const mySavedOrderIds: string[] = JSON.parse(localStorage.getItem('qp_my_placed_order_ids') || '[]');
+      return mySavedOrderIds.includes(order.id);
+    } catch {
+      return false;
+    }
+  };
+
   const activeOrder = orders.find(
-    o => o.status !== 'delivered' && o.status !== 'cancelled'
+    o => o.status !== 'delivered' && o.status !== 'cancelled' && isMyCustomerOrder(o) && dismissedOrderId !== o.id
   );
 
   // Filter products by search, category, and tab
@@ -574,27 +590,45 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         </button>
       )}
 
-      {/* Floating Active Order Widget (Live Order Tracking) */}
+      {/* Floating Active Order Widget (Live Order Tracking - Scoped & Non-Blinking) */}
       {activeOrder && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-orange-950 text-white rounded-2xl px-4 py-2.5 shadow-2xl border border-orange-500/50 flex items-center gap-3 animate-pulse cursor-pointer max-w-md w-[92vw]">
-          <div className="w-3 h-3 rounded-full bg-yellow-400 shrink-0"></div>
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-gray-900/95 dark:bg-gray-900/95 backdrop-blur-md text-white rounded-2xl px-4 py-3 shadow-2xl border-2 border-orange-500/80 flex items-center gap-3 max-w-md w-[92vw] transition-all">
+          <div className="relative flex items-center justify-center shrink-0">
+            <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
+            <span className="w-3 h-3 rounded-full bg-emerald-400 absolute animate-ping opacity-75"></span>
+          </div>
+
           <div
-            className="flex-1 text-left"
+            className="flex-1 text-left cursor-pointer min-w-0"
             onClick={() => onTrackOrder(activeOrder.id)}
           >
-            <p className="text-xs font-extrabold italic text-yellow-300">
+            <p className="text-xs font-black text-amber-300 truncate">
               Order #{activeOrder.id} arriving in {activeOrder.deliveryTimeMins} mins!
             </p>
-            <p className="text-[10px] text-orange-200 capitalize">
-              Status: {activeOrder.status.replace('_', ' ')}
+            <p className="text-[10px] text-gray-300 font-semibold capitalize truncate">
+              Status: <span className="text-emerald-400 font-bold">{activeOrder.status.replace('_', ' ')}</span>
             </p>
           </div>
-          <button
-            onClick={() => onTrackOrder(activeOrder.id)}
-            className="bg-yellow-400 hover:bg-yellow-500 text-orange-950 font-black text-xs px-3 py-1.5 rounded-xl shadow shrink-0"
-          >
-            Track Live ➔
-          </button>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => onTrackOrder(activeOrder.id)}
+              className="bg-orange-500 hover:bg-orange-600 text-white font-black text-xs px-3 py-1.5 rounded-xl shadow transition-transform active:scale-95 flex items-center gap-1"
+            >
+              Track Live ➔
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setDismissedOrderId(activeOrder.id);
+              }}
+              className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              title="Dismiss tracking pill"
+              aria-label="Dismiss tracking pill"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 

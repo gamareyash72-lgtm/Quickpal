@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Order } from '../types';
 import { DeliveryRouteMapModal } from './DeliveryRouteMapModal';
+import { DeliveryOtpModal } from './DeliveryOtpModal';
+import { SecureCallModal } from './SecureCallModal';
+import { maskPhoneNumber } from '../utils/phonePrivacy';
 import { db, auth, onSnapshot, collection } from '../lib/firebase';
 import {
   Bike,
@@ -21,7 +24,9 @@ import {
   ExternalLink,
   RefreshCw,
   Wifi,
-  WifiOff
+  WifiOff,
+  KeyRound,
+  Lock
 } from 'lucide-react';
 
 export const DeliveryPartnerDashboard: React.FC = () => {
@@ -36,11 +41,19 @@ export const DeliveryPartnerDashboard: React.FC = () => {
     syncOrdersFromRemote,
     partnerRespondToOrder,
     updateOrderStatusByAdmin,
+    completeDeliveryWithOtp,
     updatePartner
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'pending' | 'assigned' | 'history'>('pending');
   const [selectedMapOrder, setSelectedMapOrder] = useState<Order | null>(null);
+  const [selectedOrderForOtp, setSelectedOrderForOtp] = useState<Order | null>(null);
+  const [secureCallTarget, setSecureCallTarget] = useState<{
+    recipientName: string;
+    recipientRole: string;
+    rawPhoneNumber: string;
+    orderId?: string;
+  } | null>(null);
   const [mapDefaultLeg, setMapDefaultLeg] = useState<'store' | 'customer'>('store');
   const [selectedZonePincode, setSelectedZonePincode] = useState<string>(activePartner?.pinCode || '401102');
   
@@ -184,6 +197,21 @@ export const DeliveryPartnerDashboard: React.FC = () => {
       (o?.status || '').toLowerCase() === 'delivered'
   );
 
+  // Accurate real-time earnings calculation from verified delivered orders
+  const todayStr = new Date().toDateString();
+  const todayCompletedOrders = myCompletedOrders.filter(o => {
+    if (!o.createdAt) return true;
+    try {
+      return new Date(o.createdAt).toDateString() === todayStr;
+    } catch {
+      return true;
+    }
+  });
+
+  const todayEarnings = todayCompletedOrders.reduce((sum, o) => sum + (o.deliveryFee || 40), 0);
+  const totalCompletedTrips = myCompletedOrders.length;
+  const totalEarnings = myCompletedOrders.reduce((sum, o) => sum + (o.deliveryFee || 40), 0);
+
   const toggleOnline = () => {
     updatePartner({
       ...activePartner,
@@ -325,8 +353,8 @@ export const DeliveryPartnerDashboard: React.FC = () => {
           <span className="text-[10px] font-black uppercase tracking-wider text-orange-100">
             Today's Earnings
           </span>
-          <p className="text-2xl font-black mt-1">₹{activePartner.totalEarnings + (myCompletedOrders.length * 40)}</p>
-          <span className="text-[10px] text-orange-100">₹40 per delivery payout</span>
+          <p className="text-2xl font-black mt-1">₹{todayEarnings}</p>
+          <span className="text-[10px] text-orange-100">₹40 payout per delivery</span>
         </div>
 
         <div className="bg-yellow-400 text-orange-950 rounded-3xl p-4 shadow-md">
@@ -334,9 +362,9 @@ export const DeliveryPartnerDashboard: React.FC = () => {
             Completed Trips
           </span>
           <p className="text-2xl font-black mt-1">
-            {activePartner.completedOrdersCount + myCompletedOrders.length}
+            {totalCompletedTrips}
           </p>
-          <span className="text-[10px] text-orange-900/80">100% On-time score</span>
+          <span className="text-[10px] text-orange-900/80">Lifetime verified deliveries</span>
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-3xl p-4 shadow-sm">
@@ -344,9 +372,11 @@ export const DeliveryPartnerDashboard: React.FC = () => {
             Partner Rating
           </span>
           <p className="text-2xl font-black mt-1 text-amber-500">
-            ★ {activePartner.rating}
+            ★ {totalCompletedTrips > 0 ? (activePartner.rating || 5.0).toFixed(1) : '5.0'}
           </p>
-          <span className="text-[10px] text-gray-500">Based on customer feedback</span>
+          <span className="text-[10px] text-gray-500">
+            {totalCompletedTrips > 0 ? 'Based on verified deliveries' : 'New partner standard'}
+          </span>
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-3xl p-4 shadow-sm flex flex-col justify-between">
@@ -486,9 +516,14 @@ export const DeliveryPartnerDashboard: React.FC = () => {
                       {ord.deliveryAddress || (typeof ord.deliveryLocation === 'string' ? ord.deliveryLocation : `${ord.address?.addressLine}, ${ord.address?.area}`)}
                     </p>
                     {ord.deliveryPincode && <p className="text-[10px] text-gray-500 font-mono">PIN: {ord.deliveryPincode}</p>}
-                    <p className="text-[11px] text-gray-500 mt-0.5">
-                      Customer: {ord.customerName} ({ord.customerPhone})
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] text-gray-600 dark:text-gray-400">
+                        Customer: <strong className="text-gray-900 dark:text-gray-200">{ord.customerName}</strong>
+                      </span>
+                      <span className="bg-white/80 dark:bg-gray-800 px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 text-[10px] font-mono text-gray-600 dark:text-gray-300 font-semibold flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5 text-orange-500" /> {maskPhoneNumber(ord.customerPhone)}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -572,25 +607,52 @@ export const DeliveryPartnerDashboard: React.FC = () => {
                     </div>
 
                     <div className={`p-3 rounded-2xl border ${!isPickUpPhase ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300' : 'bg-gray-50 dark:bg-gray-800 border-gray-200'}`}>
-                      <span className="font-extrabold text-emerald-700 dark:text-emerald-400 text-[10px] uppercase block">
-                        2. Customer Address
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-emerald-700 dark:text-emerald-400 text-[10px] uppercase block">
+                          2. Customer Address
+                        </span>
+                        <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                          <Lock className="w-2.5 h-2.5" /> Masked Contact
+                        </span>
+                      </div>
                       <p className="font-bold text-gray-900 dark:text-gray-100">{ord.customerName}</p>
                       <p className="text-[11px] text-gray-500">
                         {ord.deliveryAddress || (typeof ord.deliveryLocation === 'string' ? ord.deliveryLocation : `${ord.address?.addressLine}, ${ord.address?.area}`)}
                       </p>
-                      {ord.deliveryPincode && <p className="text-[10px] text-gray-400 font-mono">PIN: {ord.deliveryPincode}</p>}
+                      <div className="flex items-center gap-2 mt-1">
+                        {ord.deliveryPincode && <span className="text-[10px] text-gray-400 font-mono">PIN: {ord.deliveryPincode}</span>}
+                        <span className="text-[10px] font-mono text-gray-500">
+                          {maskPhoneNumber(ord.customerPhone)}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Call Customer & Map Navigation buttons */}
+                  {/* Private Call & Map Navigation buttons */}
                   <div className="flex flex-wrap sm:flex-nowrap gap-2">
-                    <a
-                      href={`tel:${isPickUpPhase ? (ord.storeInfo?.contactPhone || '+91 98234 56789') : ord.customerPhone}`}
-                      className="bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 px-3 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isPickUpPhase) {
+                          setSecureCallTarget({
+                            recipientName: ord.storeInfo?.name || 'Dark Store Hub #1',
+                            recipientRole: 'Store Dispatch Manager',
+                            rawPhoneNumber: ord.storeInfo?.contactPhone || '+91 98234 56789',
+                            orderId: ord.id
+                          });
+                        } else {
+                          setSecureCallTarget({
+                            recipientName: ord.customerName,
+                            recipientRole: 'Customer',
+                            rawPhoneNumber: ord.customerPhone,
+                            orderId: ord.id
+                          });
+                        }
+                      }}
+                      className="bg-amber-100 hover:bg-amber-200 dark:bg-amber-950 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-200 px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
                     >
-                      <Phone className="w-4 h-4" /> Call {isPickUpPhase ? 'Store Owner' : 'Customer'}
-                    </a>
+                      <Phone className="w-4 h-4 text-orange-600" /> Secure Call {isPickUpPhase ? 'Store' : 'Customer'}
+                    </button>
 
                     <button
                       onClick={() => handleOpenMap(ord, isPickUpPhase ? 'store' : 'customer')}
@@ -627,7 +689,7 @@ export const DeliveryPartnerDashboard: React.FC = () => {
                     <span className="text-[10px] font-extrabold text-gray-400 uppercase block mb-2">
                       Delivery Action Steps
                     </span>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2">
                       {isPickUpPhase && (
                         <button
                           onClick={() => {
@@ -642,11 +704,11 @@ export const DeliveryPartnerDashboard: React.FC = () => {
                       )}
                       {(ord.status === 'picked_up' || ord.status === 'out_for_delivery') && (
                         <button
-                          onClick={() => updateOrderStatusByAdmin(ord.id, 'delivered')}
-                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-2xl font-black text-xs shadow-md flex items-center justify-center gap-2"
+                          onClick={() => setSelectedOrderForOtp(ord)}
+                          className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white py-3.5 rounded-2xl font-black text-xs shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all transform active:scale-95"
                         >
-                          <CheckCircle2 className="w-4 h-4" />
-                          🎉 Confirm Order Handed Over To Customer
+                          <KeyRound className="w-4 h-4" />
+                          🔑 Enter Customer OTP & Complete Delivery
                         </button>
                       )}
                     </div>
@@ -661,25 +723,48 @@ export const DeliveryPartnerDashboard: React.FC = () => {
       {/* Tab 3: Delivery History */}
       {activeTab === 'history' && (
         <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 space-y-3">
-          <h4 className="text-sm font-black uppercase text-gray-700 dark:text-gray-300">
-            Completed Trip History
-          </h4>
+          <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-800">
+            <h4 className="text-sm font-black uppercase text-gray-700 dark:text-gray-300">
+              Completed Trip History ({myCompletedOrders.length})
+            </h4>
+            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/80 px-2.5 py-1 rounded-xl">
+              Total Earned: ₹{totalEarnings}
+            </span>
+          </div>
+
           {myCompletedOrders.length === 0 ? (
-            <p className="text-xs text-gray-400 italic">No completed orders yet today.</p>
+            <div className="py-8 text-center space-y-1">
+              <p className="text-xs text-gray-500 font-bold">No completed orders yet</p>
+              <p className="text-[11px] text-gray-400">Accept and deliver customer orders to earn ₹40 per trip!</p>
+            </div>
           ) : (
             <div className="space-y-2">
               {myCompletedOrders.map(ord => (
                 <div
                   key={ord.id}
-                  className="p-3 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center justify-between text-xs"
+                  className="p-3 bg-gray-50 dark:bg-gray-800/80 rounded-2xl flex items-center justify-between text-xs border border-gray-100 dark:border-gray-800"
                 >
-                  <div>
-                    <span className="font-bold">Order #{ord.id}</span>
-                    <p className="text-[10px] text-gray-400">{ord.deliveryLocation}</p>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-black text-orange-600 dark:text-orange-400">#{ord.id}</span>
+                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-extrabold px-2 py-0.5 rounded-md">
+                        Delivered
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium">
+                      {typeof ord.deliveryLocation === 'string'
+                        ? ord.deliveryLocation
+                        : ord.address?.addressLine || 'Saphale (401102)'}
+                    </p>
+                    <p className="text-[10px] text-gray-400">
+                      {ord.createdAt ? new Date(ord.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Delivered'}
+                    </p>
                   </div>
-                  <div className="text-right">
-                    <span className="font-extrabold text-orange-600">+₹40 Payout</span>
-                    <p className="text-[10px] text-gray-400">Total ₹{ord.total}</p>
+                  <div className="text-right shrink-0">
+                    <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm block">
+                      +₹{ord.deliveryFee || 40}
+                    </span>
+                    <p className="text-[10px] text-gray-400">Order: ₹{ord.total}</p>
                   </div>
                 </div>
               ))}
@@ -694,6 +779,29 @@ export const DeliveryPartnerDashboard: React.FC = () => {
         onClose={() => setSelectedMapOrder(null)}
         defaultLeg={mapDefaultLeg}
       />
+
+      {/* Doorstep OTP Delivery Verification Modal */}
+      <DeliveryOtpModal
+        isOpen={!!selectedOrderForOtp}
+        onClose={() => setSelectedOrderForOtp(null)}
+        order={selectedOrderForOtp}
+        onSuccess={() => {
+          setSelectedOrderForOtp(null);
+          setActiveTab('history');
+        }}
+      />
+
+      {/* Secure In-App VoIP Call Modal */}
+      {secureCallTarget && (
+        <SecureCallModal
+          isOpen={!!secureCallTarget}
+          onClose={() => setSecureCallTarget(null)}
+          recipientName={secureCallTarget.recipientName}
+          recipientRole={secureCallTarget.recipientRole}
+          rawPhoneNumber={secureCallTarget.rawPhoneNumber}
+          orderId={secureCallTarget.orderId}
+        />
+      )}
     </div>
   );
 };

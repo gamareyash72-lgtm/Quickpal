@@ -98,60 +98,7 @@ export const INITIAL_BANNERS: PromoBanner[] = [
   },
 ];
 
-export const INITIAL_PARTNERS: DeliveryPartner[] = [
-  {
-    id: 'partner-yash',
-    name: 'Yash Gamare',
-    phone: '+91 98765 40110',
-    vehicleType: 'EV Bike',
-    vehicleNumber: 'MH-04-QP-4011',
-    isOnline: true,
-    totalEarnings: 1420,
-    completedOrdersCount: 28,
-    rating: 4.9,
-    currentLocationName: 'Saphale East Express Hub',
-    pinCode: '401102',
-  },
-  {
-    id: 'partner-1',
-    name: 'Rahul Sharma',
-    phone: '+91 98765 43210',
-    vehicleType: 'EV Scooter',
-    vehicleNumber: 'MH-04-QP-1001',
-    isOnline: true,
-    totalEarnings: 1420,
-    completedOrdersCount: 28,
-    rating: 4.9,
-    currentLocationName: 'Saphale East Express Hub',
-    pinCode: '401102',
-  },
-  {
-    id: 'partner-2',
-    name: 'Vikram Singh',
-    phone: '+91 98123 76543',
-    vehicleType: 'Motorcycle',
-    vehicleNumber: 'MH-04-QP-2045',
-    isOnline: true,
-    totalEarnings: 980,
-    completedOrdersCount: 19,
-    rating: 4.8,
-    currentLocationName: 'Saphale Station Road Hub',
-    pinCode: '401102',
-  },
-  {
-    id: 'partner-3',
-    name: 'Amit Kumar',
-    phone: '+91 97110 88234',
-    vehicleType: 'E-Bicycle',
-    vehicleNumber: 'MH-04-QP-8801',
-    isOnline: false,
-    totalEarnings: 650,
-    completedOrdersCount: 12,
-    rating: 4.7,
-    currentLocationName: 'Saphale West Hub',
-    pinCode: '401102',
-  },
-];
+export const INITIAL_PARTNERS: DeliveryPartner[] = [];
 
 export const INITIAL_COUPONS: Coupon[] = [
   {

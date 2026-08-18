@@ -69,6 +69,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     updateCategory,
     deleteCategory,
     registerPartner,
+    deletePartner,
+    clearFakePartners,
     storeAcceptOrder,
     updateOrderStatusByAdmin,
     addBanner,
@@ -90,11 +92,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
   >(initialTab || 'products');
 
   useEffect(() => {
+    if (initialTab) {
+      setAdminTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
     setPaySettingsForm(paymentSettings);
   }, [paymentSettings]);
 
+  // Safe Location Text Helper
+  const formatLocationText = (loc?: string | { latitude: number; longitude: number } | null, fallback: string = 'Saphale (401102)'): string => {
+    if (!loc) return fallback;
+    if (typeof loc === 'object') {
+      if (typeof (loc as any).latitude === 'number' && typeof (loc as any).longitude === 'number') {
+        return `GPS: ${(loc as any).latitude.toFixed(4)}, ${(loc as any).longitude.toFixed(4)}`;
+      }
+      return fallback;
+    }
+    return String(loc);
+  };
+
   // Delete User Confirm State
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; role: string } | null>(null);
+  // Delete Partner Confirm State
+  const [partnerToDelete, setPartnerToDelete] = useState<DeliveryPartner | null>(null);
+
+  // Orders Tab Filter State
+  const [orderFilter, setOrderFilter] = useState<'all' | 'placed' | 'store_accepted' | 'in_transit' | 'delivered' | 'cancelled'>('all');
 
   // FAQ Modal state
   const [showFaqModal, setShowFaqModal] = useState(false);
@@ -152,8 +177,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
   const [partnerForm, setPartnerForm] = useState({
     name: '',
     phone: '',
+    email: '',
+    password: '',
     vehicleType: 'EV Scooter',
-    vehicleNumber: 'DL-01-QP-9900',
+    vehicleNumber: 'MH-04-QP-' + Math.floor(1000 + Math.random() * 9000),
     currentLocationName: 'Saphale East Express Hub',
     pinCode: '401102',
     isOnline: true
@@ -338,18 +365,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     }
   };
 
-  const handleRegisterPartner = (e: React.FormEvent) => {
+  const handleRegisterPartner = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!partnerForm.name || !partnerForm.phone) return;
-    registerPartner(partnerForm);
+    await registerPartner(partnerForm);
     setShowPartnerModal(false);
     setPartnerForm({
       name: '',
       phone: '',
+      email: '',
+      password: '',
       vehicleType: 'EV Scooter',
-      vehicleNumber: 'DL-01-QP-9900',
-      currentLocationName: 'Dark Store #1',
-      pinCode: '110016',
+      vehicleNumber: 'MH-04-QP-' + Math.floor(1000 + Math.random() * 9000),
+      currentLocationName: 'Saphale East Express Hub',
+      pinCode: '401102',
       isOnline: true
     });
   };
@@ -706,131 +735,204 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
       {/* Tab 3: Orders & Dispatch Management */}
       {adminTab === 'orders' && (
         <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 space-y-4">
-          <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200">
-            Live Customer Orders & Partner Response Logs ({orders.length})
-          </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-3">
+            <div>
+              <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-orange-500" />
+                Live Customer Orders & Dispatch Desk ({orders.length})
+              </h3>
+              <p className="text-xs text-gray-400 font-medium">
+                Real-time synchronization with Firestore. Track store verification, rider acceptance & delivery status.
+              </p>
+            </div>
 
+            {/* Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              {[
+                { id: 'all', label: `All (${orders.length})` },
+                { id: 'placed', label: `Pending Check (${orders.filter(o => o.status === 'placed').length})` },
+                { id: 'store_accepted', label: `Store Accepted (${orders.filter(o => o.status === 'store_accepted').length})` },
+                { id: 'in_transit', label: `In Transit (${orders.filter(o => ['accepted', 'picked_up', 'out_for_delivery'].includes(o.status)).length})` },
+                { id: 'delivered', label: `Delivered (${orders.filter(o => o.status === 'delivered').length})` },
+                { id: 'cancelled', label: `Cancelled (${orders.filter(o => o.status === 'cancelled').length})` }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setOrderFilter(tab.id as any)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all ${
+                    orderFilter === tab.id
+                      ? 'bg-orange-500 text-white shadow-xs'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Orders List */}
           <div className="space-y-3">
-            {orders.map(ord => (
-              <div
-                key={ord.id}
-                className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 space-y-3 text-xs"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-black text-sm text-orange-700 dark:text-orange-400">
-                      Order #{ord.id}
-                    </span>
-                    <span className="bg-orange-100 text-orange-800 font-bold px-2 py-0.5 rounded text-[10px]">
-                      ₹{ord.total} ({ord.paymentMethod.toUpperCase()})
-                    </span>
-                  </div>
-
-                  {/* Manual Status Override Selector & Print Receipt */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => printOrderReceipt(ord)}
-                      className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-extrabold text-[11px] flex items-center gap-1 transition-all"
-                      title="Print Official Order Receipt"
-                    >
-                      <Printer className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" /> Print Receipt
-                    </button>
-                    <span className="text-[10px] text-gray-400 font-bold uppercase">Set Status:</span>
-                    <select
-                      value={ord.status}
-                      onChange={e => updateOrderStatusByAdmin(ord.id, e.target.value as OrderStatus)}
-                      className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-xs font-bold px-2 py-1 rounded-lg"
-                    >
-                      <option value="placed">Placed (Pending Store Check)</option>
-                      <option value="store_accepted">Store Accepted & In Stock</option>
-                      <option value="accepted">Accepted by Delivery Partner</option>
-                      <option value="picked_up">Picked Up from Store</option>
-                      <option value="out_for_delivery">Out for Delivery</option>
-                      <option value="delivered">Delivered</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Store Stock Confirmation Banner if status is 'placed' */}
-                {ord.status === 'placed' && (
-                  <div className="bg-amber-50 dark:bg-amber-950/50 p-3 rounded-2xl border border-amber-200 dark:border-amber-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
-                    <div>
-                      <span className="font-black text-amber-900 dark:text-amber-200 block">
-                        🛍️ Action Required: Confirm Store Product Availability
-                      </span>
-                      <p className="text-[11px] text-amber-800 dark:text-amber-300">
-                        Items: {ord.items.map(i => `${i.quantity}x ${i.product.name}`).join(', ')}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => storeAcceptOrder(ord.id)}
-                      className="bg-orange-500 hover:bg-orange-600 text-white font-black px-4 py-2 rounded-xl text-xs shadow-md shrink-0 flex items-center gap-1.5 transition-transform active:scale-95"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      Confirm Stock & Accept Order
-                    </button>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-gray-400 block">Customer</span>
-                    <p className="font-bold">{ord.customerName}</p>
-                    <p className="text-gray-500 text-[11px]">{ord.deliveryLocation}</p>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-gray-400 block">Assigned Partner</span>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="font-bold text-amber-600 dark:text-amber-400">
-                        {ord.deliveryPartnerName || 'Unassigned'}
-                      </span>
-                      {/* Manual Partner Assign */}
-                      <select
-                        value={ord.deliveryPartnerId || ''}
-                        onChange={e => updateOrderStatusByAdmin(ord.id, ord.status, e.target.value)}
-                        className="bg-white dark:bg-gray-800 border border-gray-300 text-[10px] font-bold px-1.5 py-0.5 rounded"
-                      >
-                        <option value="">Assign Partner...</option>
-                        {partners.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-gray-400 block">
-                      Partner Accept/Reject Audit Logs
-                    </span>
-                    {ord.partnerResponseLogs.length === 0 ? (
-                      <p className="text-[10px] text-gray-400 italic">No partner response logged yet.</p>
-                    ) : (
-                      <div className="space-y-1 mt-1">
-                        {ord.partnerResponseLogs.map((log, idx) => (
-                          <div
-                            key={idx}
-                            className={`p-1 rounded text-[10px] font-bold flex items-center justify-between ${
-                              log.action === 'accepted'
-                                ? 'bg-orange-100 text-orange-800'
-                                : 'bg-rose-100 text-rose-800'
-                            }`}
-                          >
-                            <span>
-                              {log.partnerName} {log.action.toUpperCase()}
-                            </span>
-                            <span>{log.timestamp}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+            {orders.filter(o => {
+              if (orderFilter === 'all') return true;
+              if (orderFilter === 'in_transit') return ['accepted', 'picked_up', 'out_for_delivery'].includes(o.status);
+              return o.status === orderFilter;
+            }).length === 0 ? (
+              <div className="p-10 text-center bg-gray-50 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-800 text-gray-400 font-bold text-xs space-y-2">
+                <p>🛒 No customer orders match filter '{orderFilter}'.</p>
+                <p className="text-[11px] text-gray-500 font-normal">New orders placed by customers in Saphale / Palghar will appear here in real-time.</p>
               </div>
-            ))}
+            ) : (
+              orders
+                .filter(o => {
+                  if (orderFilter === 'all') return true;
+                  if (orderFilter === 'in_transit') return ['accepted', 'picked_up', 'out_for_delivery'].includes(o.status);
+                  return o.status === orderFilter;
+                })
+                .map(ord => {
+                  const safeLogs = Array.isArray(ord.partnerResponseLogs) ? ord.partnerResponseLogs : [];
+                  const safeItems = Array.isArray(ord.items) ? ord.items : [];
+                  const deliveryLoc = formatLocationText(ord.deliveryLocation, ord.address?.addressLine || 'Saphale');
+
+                  return (
+                    <div
+                      key={ord.id}
+                      className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 space-y-3 text-xs"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-sm text-orange-700 dark:text-orange-400">
+                            Order #{ord.id}
+                          </span>
+                          <span className="bg-orange-100 text-orange-800 font-bold px-2 py-0.5 rounded text-[10px]">
+                            ₹{ord.total} ({(ord.paymentMethod || 'COD').toUpperCase()})
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                            ord.status === 'delivered'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : ord.status === 'cancelled'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {ord.status.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+
+                        {/* Manual Status Override Selector & Print Receipt */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              try {
+                                printOrderReceipt(ord);
+                              } catch (err) {
+                                console.warn("Print receipt error:", err);
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-extrabold text-[11px] flex items-center gap-1 transition-all"
+                            title="Print Official Order Receipt"
+                          >
+                            <Printer className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" /> Print Receipt
+                          </button>
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Set Status:</span>
+                          <select
+                            value={ord.status}
+                            onChange={e => updateOrderStatusByAdmin(ord.id, e.target.value as OrderStatus)}
+                            className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-xs font-bold px-2 py-1 rounded-lg"
+                          >
+                            <option value="placed">Placed (Pending Store Check)</option>
+                            <option value="store_accepted">Store Accepted & In Stock</option>
+                            <option value="accepted">Accepted by Delivery Partner</option>
+                            <option value="picked_up">Picked Up from Store</option>
+                            <option value="out_for_delivery">Out for Delivery</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Store Stock Confirmation Banner if status is 'placed' */}
+                      {ord.status === 'placed' && (
+                        <div className="bg-amber-50 dark:bg-amber-950/50 p-3 rounded-2xl border border-amber-200 dark:border-amber-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+                          <div>
+                            <span className="font-black text-amber-900 dark:text-amber-200 block">
+                              🛍️ Action Required: Confirm Store Product Availability
+                            </span>
+                            <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                              Items: {safeItems.map(i => `${i.quantity}x ${i.product?.name || 'Item'}`).join(', ')}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => storeAcceptOrder(ord.id)}
+                            className="bg-orange-500 hover:bg-orange-600 text-white font-black px-4 py-2 rounded-xl text-xs shadow-md shrink-0 flex items-center gap-1.5 transition-transform active:scale-95"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Confirm Stock & Accept Order
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-gray-400 block">Customer</span>
+                          <p className="font-bold">{ord.customerName || 'Customer'}</p>
+                          <p className="text-gray-500 text-[11px]">{deliveryLoc}</p>
+                          {ord.customerPhone && <p className="text-gray-400 text-[10px]">📞 {ord.customerPhone}</p>}
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-gray-400 block">Assigned Delivery Partner</span>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="font-bold text-amber-600 dark:text-amber-400">
+                              {ord.deliveryPartnerName || 'Unassigned'}
+                            </span>
+                            {/* Manual Partner Assign */}
+                            <select
+                              value={ord.deliveryPartnerId || ''}
+                              onChange={e => updateOrderStatusByAdmin(ord.id, ord.status, e.target.value)}
+                              className="bg-white dark:bg-gray-800 border border-gray-300 text-[10px] font-bold px-1.5 py-0.5 rounded"
+                            >
+                              <option value="">Assign Partner...</option>
+                              {partners.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          {ord.notes && <p className="text-[10px] text-gray-400 italic mt-1">Note: {ord.notes}</p>}
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-gray-400 block">
+                            Partner Accept/Reject Audit Logs
+                          </span>
+                          {safeLogs.length === 0 ? (
+                            <p className="text-[10px] text-gray-400 italic">No partner response logged yet.</p>
+                          ) : (
+                            <div className="space-y-1 mt-1">
+                              {safeLogs.map((log, idx) => (
+                                <div
+                                  key={idx}
+                                  className={`p-1 rounded text-[10px] font-bold flex items-center justify-between ${
+                                    log.action === 'accepted'
+                                      ? 'bg-orange-100 text-orange-800'
+                                      : 'bg-rose-100 text-rose-800'
+                                  }`}
+                                >
+                                  <span>
+                                    {log.partnerName} {log.action.toUpperCase()}
+                                  </span>
+                                  <span>{log.timestamp}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+            )}
           </div>
         </div>
       )}
@@ -999,48 +1101,100 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
       {/* Tab 4: Delivery Partners Registration (No Self Registration) */}
       {adminTab === 'partners' && (
         <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-3">
             <div>
-              <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200">
+              <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                <Bike className="w-4 h-4 text-orange-500" />
                 Registered Delivery Partners ({partners.length})
               </h3>
-              <p className="text-xs text-gray-400">
-                Strict Security: Delivery partners can only be onboarded by Admin credentials.
+              <p className="text-xs text-gray-400 font-medium">
+                Live delivery partner fleet. All data connects directly to Firebase database.
               </p>
             </div>
-            <button
-              onClick={() => setShowPartnerModal(true)}
-              className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" /> Register Delivery Partner
-            </button>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              {partners.some(p => ['partner-1', 'partner-2', 'partner-3', 'partner-yash'].includes(p.id)) && (
+                <button
+                  onClick={clearFakePartners}
+                  className="bg-gray-100 dark:bg-gray-800 hover:bg-rose-50 hover:text-rose-600 text-gray-600 dark:text-gray-300 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1 transition-colors border border-gray-200 dark:border-gray-700"
+                  title="Remove all pre-seeded demo partners"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Clear Mock Partners
+                </button>
+              )}
+              <button
+                onClick={() => setShowPartnerModal(true)}
+                className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-transform active:scale-95"
+              >
+                <Plus className="w-4 h-4" /> Register Delivery Partner
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {partners.map(p => (
-              <div
-                key={p.id}
-                className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 space-y-2 text-xs"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-sm">{p.name}</span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                      p.isOnline ? 'bg-orange-100 text-orange-800' : 'bg-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {p.isOnline ? 'Online' : 'Offline'}
-                  </span>
-                </div>
-                <p className="text-gray-500">Phone: {p.phone}</p>
-                <p className="text-gray-500">Vehicle: {p.vehicleType} ({p.vehicleNumber})</p>
-                <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-between font-bold text-orange-700 dark:text-orange-400">
-                  <span>Earnings: ₹{p.totalEarnings}</span>
-                  <span>Rating: ★ {p.rating}</span>
-                </div>
+          {partners.length === 0 ? (
+            <div className="p-12 text-center bg-gray-50 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-800 space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 mx-auto flex items-center justify-center font-black">
+                <Bike className="w-6 h-6" />
               </div>
-            ))}
-          </div>
+              <p className="font-black text-sm text-gray-800 dark:text-gray-200">No delivery partners registered yet.</p>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">Click "Register Delivery Partner" to onboard your first rider into Firebase.</p>
+              <button
+                onClick={() => setShowPartnerModal(true)}
+                className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-black px-5 py-2.5 rounded-xl shadow-md"
+              >
+                + Register First Delivery Partner
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {partners.map(p => {
+                const partnerDeliveredCount = orders.filter(
+                  o => (o.deliveryPartnerId === p.id || o.assignedPartnerId === p.id) && (o.status || '').toLowerCase() === 'delivered'
+                ).length;
+                const partnerLiveEarnings = partnerDeliveredCount * 40;
+
+                return (
+                  <div
+                    key={p.id}
+                    className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 space-y-2.5 text-xs relative group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-extrabold text-sm text-gray-900 dark:text-gray-100 block">{p.name}</span>
+                        <span className="text-[10px] text-gray-400 font-mono">ID: #{p.id}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                            p.isOnline ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'
+                          }`}
+                        >
+                          {p.isOnline ? 'Online' : 'Offline'}
+                        </span>
+                        <button
+                          onClick={() => setPartnerToDelete(p)}
+                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors"
+                          title="Delete / Remove Partner"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-gray-600 dark:text-gray-300 text-[11px]">
+                      <p>📞 Phone: <strong>{p.phone || 'N/A'}</strong></p>
+                      <p>🛵 Vehicle: <strong>{p.vehicleType || 'EV Bike'}</strong> ({p.vehicleNumber || 'MH-04-QP'})</p>
+                      <p>📍 Location: <strong>{p.currentLocationName || 'Saphale Hub'}</strong> (PIN: {p.pinCode || '401102'})</p>
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-between font-bold text-orange-700 dark:text-orange-400 text-[11px]">
+                      <span>Live Earnings: ₹{partnerLiveEarnings} ({partnerDeliveredCount} trips)</span>
+                      <span>Rating: ★ {p.rating || 5.0}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -2195,78 +2349,180 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
       {/* Partner Onboarding Modal */}
       {showPartnerModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-xs font-bold">
-            <h3 className="text-base font-black">Register New Delivery Partner</h3>
+          <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 dark:border-gray-800 space-y-4 text-xs font-bold max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Bike className="w-5 h-5 text-orange-500" />
+                Register Delivery Partner
+              </h3>
+              <button
+                onClick={() => setShowPartnerModal(false)}
+                className="p-1 rounded-full text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
             <p className="text-gray-400 font-normal">
-              Direct Admin Registration (Self-registration is disabled for security).
+              Direct Admin Onboarding. Partners are instantly registered in Firebase and can log in immediately.
             </p>
 
             <form onSubmit={handleRegisterPartner} className="space-y-3">
               <div>
-                <label className="block mb-1">Full Name</label>
+                <label className="block mb-1 text-gray-700 dark:text-gray-300">Rider Full Name *</label>
                 <input
                   type="text"
                   value={partnerForm.name}
                   onChange={e => setPartnerForm({ ...partnerForm, name: e.target.value })}
-                  placeholder="e.g. Ramesh Verma"
-                  className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 rounded-xl px-3 py-2 text-xs"
+                  placeholder="e.g. Yash Gamare"
+                  className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
                   required
                 />
               </div>
 
-              <div>
-                <label className="block mb-1">Phone Number</label>
-                <input
-                  type="text"
-                  value={partnerForm.phone}
-                  onChange={e => setPartnerForm({ ...partnerForm, phone: e.target.value })}
-                  placeholder="+91 98000 00000"
-                  className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 rounded-xl px-3 py-2 text-xs"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <label className="block mb-1">Vehicle Type</label>
-                  <select
-                    value={partnerForm.vehicleType}
-                    onChange={e => setPartnerForm({ ...partnerForm, vehicleType: e.target.value })}
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 rounded-xl px-2 py-2 text-xs"
-                  >
-                    <option value="EV Scooter">EV Scooter</option>
-                    <option value="Motorcycle">Motorcycle</option>
-                    <option value="E-Bicycle">E-Bicycle</option>
-                  </select>
+                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Phone Number *</label>
+                  <input
+                    type="tel"
+                    value={partnerForm.phone}
+                    onChange={e => setPartnerForm({ ...partnerForm, phone: e.target.value })}
+                    placeholder="+91 98765 40110"
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
+                    required
+                  />
                 </div>
 
                 <div>
-                  <label className="block mb-1">Vehicle No.</label>
+                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Login Email</label>
                   <input
-                    type="text"
-                    value={partnerForm.vehicleNumber}
-                    onChange={e => setPartnerForm({ ...partnerForm, vehicleNumber: e.target.value })}
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 rounded-xl px-3 py-2 text-xs"
+                    type="email"
+                    value={partnerForm.email}
+                    onChange={e => setPartnerForm({ ...partnerForm, email: e.target.value })}
+                    placeholder="partner@quickpal.in"
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Vehicle Type</label>
+                  <select
+                    value={partnerForm.vehicleType}
+                    onChange={e => setPartnerForm({ ...partnerForm, vehicleType: e.target.value })}
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-2 py-2 text-xs"
+                  >
+                    <option value="EV Bike">EV Bike / Scooter</option>
+                    <option value="Motorcycle">Motorcycle</option>
+                    <option value="E-Bicycle">E-Bicycle</option>
+                    <option value="Van / 3W">Mini Van / 3-Wheeler</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Vehicle Registration No.</label>
+                  <input
+                    type="text"
+                    value={partnerForm.vehicleNumber}
+                    onChange={e => setPartnerForm({ ...partnerForm, vehicleNumber: e.target.value })}
+                    placeholder="MH-04-QP-4011"
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs uppercase font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Primary Hub / Zone</label>
+                  <input
+                    type="text"
+                    value={partnerForm.currentLocationName}
+                    onChange={e => setPartnerForm({ ...partnerForm, currentLocationName: e.target.value })}
+                    placeholder="Saphale East Express Hub"
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Service PIN Code</label>
+                  <input
+                    type="text"
+                    value={partnerForm.pinCode}
+                    onChange={e => setPartnerForm({ ...partnerForm, pinCode: e.target.value })}
+                    placeholder="401102"
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="partnerOnlineCheck"
+                  checked={partnerForm.isOnline}
+                  onChange={e => setPartnerForm({ ...partnerForm, isOnline: e.target.checked })}
+                  className="w-4 h-4 text-orange-500 rounded"
+                />
+                <label htmlFor="partnerOnlineCheck" className="text-xs text-gray-700 dark:text-gray-300 font-bold">
+                  Online & Ready for Dispatches immediately
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
                 <button
                   type="button"
                   onClick={() => setShowPartnerModal(false)}
-                  className="px-4 py-2 rounded-xl border text-gray-500"
+                  className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="bg-orange-500 hover:bg-orange-600 text-white font-black px-5 py-2 rounded-xl"
+                  className="bg-orange-500 hover:bg-orange-600 text-white font-black px-5 py-2 rounded-xl shadow-md transition-transform active:scale-95 flex items-center gap-1.5"
                 >
-                  Register Partner
+                  <CheckCircle className="w-4 h-4" /> Save & Register to Firebase
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Partner Custom Confirmation Modal */}
+      {partnerToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-xs font-bold border border-rose-200 dark:border-rose-900/50">
+            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <h3 className="text-sm font-black uppercase text-gray-900 dark:text-gray-100">Confirm Delete Delivery Partner</h3>
+            </div>
+            <p className="text-gray-700 dark:text-gray-300 font-semibold leading-relaxed">
+              Are you sure you want to permanently delete delivery partner <span className="text-rose-600 dark:text-rose-400 font-black">'{partnerToDelete.name}'</span> (ID: <span className="font-mono text-orange-600 dark:text-orange-400 font-bold">#{partnerToDelete.id}</span>)?
+            </p>
+            <p className="text-[11px] text-gray-500 font-normal">
+              This will remove the partner from Firestore and unassign them from any active deliveries.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPartnerToDelete(null)}
+                className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (partnerToDelete) {
+                    await deletePartner(partnerToDelete.id);
+                    setPartnerToDelete(null);
+                  }
+                }}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-black px-4 py-2 rounded-xl shadow-md flex items-center gap-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Confirm Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

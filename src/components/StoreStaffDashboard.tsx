@@ -42,6 +42,17 @@ export const StoreStaffDashboard: React.FC = () => {
     phone: '+91 98234 56789'
   };
 
+  const formatLoc = (loc: any, fallback = 'Saphale East Hub') => {
+    if (!loc) return fallback;
+    if (typeof loc === 'object') {
+      if (typeof loc.latitude === 'number' && typeof loc.longitude === 'number') {
+        return `GPS: ${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)}`;
+      }
+      return fallback;
+    }
+    return String(loc);
+  };
+
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950 p-4 sm:p-6 space-y-6 pb-24">
       {/* Top Header Banner */}
@@ -162,31 +173,31 @@ export const StoreStaffDashboard: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                   <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-1">
                     <span className="font-extrabold text-gray-400 uppercase text-[10px] block">Customer Details</span>
-                    <p className="font-bold text-gray-900 dark:text-gray-100">{ord.customerName}</p>
-                    <p className="text-gray-500 text-[11px]">{ord.customerPhone}</p>
+                    <p className="font-bold text-gray-900 dark:text-gray-100">{ord.customerName || 'Customer'}</p>
+                    <p className="text-gray-500 text-[11px]">{ord.customerPhone || 'N/A'}</p>
                   </div>
 
                   <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-1">
                     <span className="font-extrabold text-gray-400 uppercase text-[10px] block">Delivery Location</span>
-                    <p className="font-bold text-gray-900 dark:text-gray-100">{ord.deliveryLocation}</p>
-                    <p className="text-gray-500 text-[11px]">Pin: {ord.address.pincode}</p>
+                    <p className="font-bold text-gray-900 dark:text-gray-100">{formatLoc(ord.deliveryLocation, ord.address?.addressLine || 'Saphale')}</p>
+                    <p className="text-gray-500 text-[11px]">Pin: {ord.address?.pincode || ord.deliveryPincode || '401102'}</p>
                   </div>
                 </div>
 
                 {/* Products Requested List */}
                 <div className="bg-amber-50/70 dark:bg-amber-950/30 p-4 rounded-2xl border border-amber-200 dark:border-amber-800/50 space-y-2 text-xs">
                   <span className="font-black text-amber-900 dark:text-amber-300 text-[11px] uppercase tracking-wider block">
-                    🛒 Requested Items ({ord.items.length}) - Please Verify Store Inventory:
+                    🛒 Requested Items ({(ord.items || []).length}) - Please Verify Store Inventory:
                   </span>
                   <div className="divide-y divide-amber-200/50 dark:divide-amber-900/40">
-                    {ord.items.map((item, idx) => (
+                    {(ord.items || []).map((item, idx) => (
                       <div key={idx} className="py-2 flex items-center justify-between text-gray-800 dark:text-gray-200">
                         <div className="flex items-center gap-2">
                           <span className="w-5 h-5 rounded-md bg-amber-500 text-white font-black text-[10px] flex items-center justify-center">
                             {item.quantity}x
                           </span>
-                          <span className="font-bold">{item.product.name}</span>
-                          <span className="text-[10px] text-gray-500">({item.product.weight || 'Standard'})</span>
+                          <span className="font-bold">{item.product?.name || 'Item'}</span>
+                          <span className="text-[10px] text-gray-500">({item.product?.weightUnit || item.product?.weight || 'Standard'})</span>
                         </div>
                         <span className="font-black">₹{item.price * item.quantity}</span>
                       </div>
@@ -267,7 +278,7 @@ export const StoreStaffDashboard: React.FC = () => {
 
                 <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3 text-xs text-gray-600 dark:text-gray-400 font-medium">
                   <div>
-                    <strong>Items:</strong> {ord.items.map(i => `${i.quantity}x ${i.product.name}`).join(', ')}
+                    <strong>Items:</strong> {(ord.items || []).map(i => `${i.quantity}x ${i.product?.name || 'Item'}`).join(', ')}
                   </div>
                   <button
                     onClick={() => printOrderReceipt(ord)}
