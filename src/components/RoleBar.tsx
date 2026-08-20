@@ -1,20 +1,25 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';
-import { ShoppingBag, Bike, ShieldCheck, Store, Moon, Sun, Lock, LogOut, UserCheck } from 'lucide-react';
+import { ShoppingBag, Bike, ShieldCheck, Store, Moon, Sun, Lock, LogOut, UserCheck, Globe } from 'lucide-react';
+import { getDetectedPortalMode } from '../utils/portalConfig';
 
 interface RoleBarProps {
   onOpenAuth?: (role?: UserRole) => void;
+  onOpenDeploymentGuide?: () => void;
 }
 
-export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth }) => {
+export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth, onOpenDeploymentGuide }) => {
   const { currentRole, setCurrentRole, themeMode, toggleTheme, currentUser, logoutUser } = useApp();
+  const { mode: detectedMode, isLockedStandalone } = getDetectedPortalMode();
 
+  const isCustomerPortal = detectedMode === 'customer';
   const isStaffAuthenticated = currentUser && currentUser.role !== 'customer';
+  const isOwnerOrAdmin = currentUser?.role === 'owner' || currentUser?.role === 'admin';
 
-  // Allowed tabs based on staff user role
+  // Allowed tabs based on staff user role - NEVER shown in Customer Portal
   const getAuthorizedRoles = (): { id: UserRole; label: string; icon: React.ReactNode }[] => {
-    if (!isStaffAuthenticated) return [];
+    if (isCustomerPortal || !isStaffAuthenticated) return [];
 
     const userRole = currentUser.role;
     const allRoles: { id: UserRole; label: string; icon: React.ReactNode }[] = [
@@ -41,6 +46,11 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth }) => {
 
   const authorizedRoles = getAuthorizedRoles();
 
+  // Completely hidden on customer portal or from regular customers
+  const showDeploymentGuideButton = Boolean(
+    !isCustomerPortal && onOpenDeploymentGuide && (!isLockedStandalone || isOwnerOrAdmin)
+  );
+
   return (
     <div className="bg-stone-950 text-white text-xs py-2 px-4 flex flex-wrap items-center justify-between border-b border-amber-950/60 shrink-0 gap-2 relative overflow-hidden">
       {/* Delicate floral watermark */}
@@ -49,7 +59,7 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth }) => {
       </div>
 
       <div className="flex items-center gap-3 relative z-10">
-        {/* Subtle Festive Pill */}
+        {/* Festive Pill */}
         <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-950/80 border border-amber-500/30 text-[10px] font-black text-amber-200">
           <span>🌺</span>
           <span>श्री गणेशोत्सव</span>
@@ -59,13 +69,17 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth }) => {
           QuickPal Saphale (401102)
         </span>
 
-        {isStaffAuthenticated ? (
+        {currentUser && !isCustomerPortal && isStaffAuthenticated ? (
           <div className="flex items-center gap-2 bg-stone-900 px-2.5 py-1 rounded-lg border border-amber-500/30 text-[11px]">
             <UserCheck className="w-3.5 h-3.5 text-amber-400" />
             <span className="font-bold text-stone-200">
               {currentUser.name} <span className="text-amber-400 font-mono text-[10px]">({currentUser.role.toUpperCase()})</span>
             </span>
           </div>
+        ) : currentUser && currentUser.role === 'customer' ? (
+          <span className="hidden md:inline text-amber-300/90 text-[11px] font-semibold">
+            Welcome, {currentUser.name}! 🚀 10-Min Delivery in Saphale
+          </span>
         ) : (
           <span className="hidden md:inline text-stone-400 text-[11px] font-semibold">
             Fresh Modaks & Puja Samagri in 10 Mins • Hyperlocal Saphale
@@ -74,8 +88,8 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth }) => {
       </div>
 
       <div className="flex items-center gap-2">
-        {/* If Staff Authenticated: Render Authorized Portal Tabs */}
-        {isStaffAuthenticated && authorizedRoles.length > 0 && (
+        {/* If Staff Authenticated in non-customer portal: Render Authorized Portal Tabs */}
+        {!isCustomerPortal && isStaffAuthenticated && authorizedRoles.length > 0 && (
           <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700">
             <button
               onClick={() => setCurrentRole('customer')}
@@ -106,8 +120,8 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth }) => {
           </div>
         )}
 
-        {/* Sign Out Button for Staff */}
-        {isStaffAuthenticated && (
+        {/* Sign Out Button for Staff in non-customer portal */}
+        {!isCustomerPortal && isStaffAuthenticated && (
           <button
             onClick={() => {
               logoutUser();
@@ -118,6 +132,19 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth }) => {
           >
             <LogOut className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Sign Out</span>
+          </button>
+        )}
+
+        {/* 4 Websites & Vercel Guide Trigger - Strictly hidden from Customer Portal */}
+        {showDeploymentGuideButton && (
+          <button
+            onClick={onOpenDeploymentGuide}
+            className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-xs"
+            title="Open 4 Websites & Vercel Deployment Guide"
+          >
+            <Globe className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">4 Portals Architecture</span>
+            <span className="sm:hidden">4 Sites</span>
           </button>
         )}
 
@@ -133,3 +160,4 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth }) => {
     </div>
   );
 };
+

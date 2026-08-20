@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';
+import { getDetectedPortalMode } from '../utils/portalConfig';
 import {
   X,
   User,
@@ -41,26 +42,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     isPincodeApproved
   } = useApp();
 
-  const handleGoogleSignIn = async () => {
-    setErrorMsg('');
-    setSuccessMsg('');
-    setIsSubmitting(true);
-    const targetRole = portalType === 'customer' ? 'customer' : staffRole;
-    const res = await loginWithGoogle(targetRole);
-    setIsSubmitting(false);
-
-    if (res.success) {
-      setSuccessMsg(res.message);
-      setTimeout(() => {
-        onClose();
-      }, 700);
-    } else {
-      setErrorMsg(res.message);
-    }
-  };
+  const { mode: detectedMode } = getDetectedPortalMode();
+  const isCustomerPortal = detectedMode === 'customer' || defaultRole === 'customer';
 
   const [portalType, setPortalType] = useState<'customer' | 'staff'>(
-    defaultRole === 'customer' ? 'customer' : 'staff'
+    isCustomerPortal ? 'customer' : 'staff'
   );
   const [staffRole, setStaffRole] = useState<UserRole>(
     defaultRole !== 'customer' ? defaultRole : 'admin'
@@ -87,6 +73,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     { id: 'admin', label: 'Admin', icon: <ShieldCheck className="w-4 h-4" /> },
     { id: 'owner', label: 'Owner', icon: <ShieldAlert className="w-4 h-4" /> },
   ];
+
+  const handleGoogleSignIn = async () => {
+    setErrorMsg('');
+    setSuccessMsg('');
+    setIsSubmitting(true);
+    const targetRole = isCustomerPortal ? 'customer' : (portalType === 'customer' ? 'customer' : staffRole);
+    const res = await loginWithGoogle(targetRole);
+    setIsSubmitting(false);
+
+    if (res.success) {
+      setSuccessMsg(res.message);
+      setTimeout(() => {
+        onClose();
+      }, 700);
+    } else {
+      setErrorMsg(res.message);
+    }
+  };
 
   const handleCustomerLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,14 +218,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-yellow-600 text-white p-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md text-white flex items-center justify-center font-black shadow-md text-xl">
-              {portalType === 'customer' ? '🛒' : '🔐'}
+              {isCustomerPortal || portalType === 'customer' ? '🛒' : '🔐'}
             </div>
             <div>
               <h2 className="text-lg font-black tracking-tight">
-                {portalType === 'customer' ? 'Customer Account & Login' : 'Operations & Staff Portal'}
+                {isCustomerPortal || portalType === 'customer' ? 'Customer Account & Login' : 'Operations & Staff Portal'}
               </h2>
               <p className="text-xs text-orange-100 font-medium">
-                {portalType === 'customer'
+                {isCustomerPortal || portalType === 'customer'
                   ? 'Sign in or create an account for 10-min grocery delivery'
                   : 'Authorized personnel login for Admin, Store & Delivery'}
               </p>
@@ -256,42 +260,44 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Modal Body Container */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
-          {/* Main Portal Selector: Customer vs Staff Login */}
-          <div className="flex bg-gray-100 dark:bg-gray-800/80 p-1 rounded-2xl border border-gray-200 dark:border-gray-700">
-            <button
-              type="button"
-              onClick={() => {
-                setPortalType('customer');
-                setAuthMode('login');
-                setErrorMsg('');
-                setSuccessMsg('');
-              }}
-              className={`flex-1 py-2 px-3 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-2 ${
-                portalType === 'customer'
-                  ? 'bg-orange-500 text-white shadow-sm'
-                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              <User className="w-3.5 h-3.5" />
-              <span>Customer Account</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setPortalType('staff');
-                setErrorMsg('');
-                setSuccessMsg('');
-              }}
-              className={`flex-1 py-2 px-3 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-2 ${
-                portalType === 'staff'
-                  ? 'bg-amber-500 text-gray-950 shadow-sm font-black'
-                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Staff & Operations Login</span>
-            </button>
-          </div>
+          {/* Main Portal Selector: ONLY shown on staff / non-customer portals */}
+          {!isCustomerPortal && (
+            <div className="flex bg-gray-100 dark:bg-gray-800/80 p-1 rounded-2xl border border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setPortalType('customer');
+                  setAuthMode('login');
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
+                className={`flex-1 py-2 px-3 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  portalType === 'customer'
+                    ? 'bg-orange-500 text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>Customer Account</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPortalType('staff');
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
+                className={`flex-1 py-2 px-3 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  portalType === 'staff'
+                    ? 'bg-amber-500 text-gray-950 shadow-sm font-black'
+                    : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Staff & Operations Login</span>
+              </button>
+            </div>
+          )}
 
           {errorMsg && (
             errorMsg.includes('unauthorized-domain') || errorMsg.includes('Domain') ? (
@@ -608,21 +614,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </form>
               )}
 
-              {/* Footer Switcher for Staff Access */}
-              <div className="pt-2 border-t border-gray-100 dark:border-gray-800 text-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPortalType('staff');
-                    setErrorMsg('');
-                    setSuccessMsg('');
-                  }}
-                  className="text-xs font-bold text-gray-500 hover:text-orange-600 dark:hover:text-orange-400 transition-colors inline-flex items-center gap-1.5"
-                >
-                  <Lock className="w-3.5 h-3.5 text-gray-400" />
-                  Staff, Partner & Owner Login Portal →
-                </button>
-              </div>
+              {/* Footer Switcher for Staff Access: ONLY shown on staff / non-customer portals */}
+              {!isCustomerPortal && (
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-800 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPortalType('staff');
+                      setErrorMsg('');
+                      setSuccessMsg('');
+                    }}
+                    className="text-xs font-bold text-gray-500 hover:text-orange-600 dark:hover:text-orange-400 transition-colors inline-flex items-center gap-1.5"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-gray-400" />
+                    Staff, Partner & Owner Login Portal →
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

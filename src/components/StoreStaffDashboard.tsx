@@ -197,9 +197,9 @@ export const StoreStaffDashboard: React.FC = () => {
                             {item.quantity}x
                           </span>
                           <span className="font-bold">{item.product?.name || 'Item'}</span>
-                          <span className="text-[10px] text-gray-500">({item.product?.weightUnit || item.product?.weight || 'Standard'})</span>
+                          <span className="text-[10px] text-gray-500">({item.product?.weightUnit || 'Standard'})</span>
                         </div>
-                        <span className="font-black">₹{item.price * item.quantity}</span>
+                        <span className="font-black">₹{(item.product?.price || 0) * item.quantity}</span>
                       </div>
                     ))}
                   </div>

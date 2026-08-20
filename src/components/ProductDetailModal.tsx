@@ -29,18 +29,20 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   if (!product) return null;
 
-  const productImages = product.images && product.images.length > 0
+  const productImages = (Array.isArray(product.images) && product.images.length > 0)
     ? product.images
     : [product.image || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80'];
 
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
 
-  const cartItem = cartItems.find(item => item.product.id === product.id);
-  const isWishlisted = wishlistProductIds.includes(product.id);
+  const cartItem = cartItems?.find(item => item?.product?.id === product.id);
+  const isWishlisted = wishlistProductIds?.includes(product.id);
   const categoryName = categories.find(c => c.id === product.category)?.name || 'Grocery Item';
-  const discountPercent = product.originalPrice > product.price
-    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+  const prodPrice = Number(product.price) || 0;
+  const prodOrigPrice = Number(product.originalPrice) || prodPrice;
+  const discountPercent = prodOrigPrice > prodPrice
+    ? Math.round(((prodOrigPrice - prodPrice) / prodOrigPrice) * 100)
     : 0;
 
   const handlePrevImage = (e: React.MouseEvent) => {
@@ -227,23 +229,23 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <div>
               <span className="text-[10px] text-gray-400 uppercase font-bold">Total Price</span>
               <p className="text-lg font-black text-orange-600 dark:text-orange-400 leading-none">
-                ₹{product.price * (cartItem ? cartItem.quantity : 1)}
+                ₹{prodPrice * (cartItem?.quantity || 1)}
               </p>
             </div>
 
             {cartItem ? (
               <div className="flex items-center bg-orange-500 text-white rounded-2xl border border-orange-600 shadow-lg px-2 py-1.5">
                 <button
-                  onClick={() => updateQuantity(product.id, cartItem.quantity - 1)}
+                  onClick={() => updateQuantity(product.id, (cartItem.quantity || 1) - 1)}
                   className="p-1.5 hover:bg-orange-600 rounded-xl transition-colors"
                 >
                   <Minus className="w-4 h-4" />
                 </button>
                 <span className="px-4 text-sm font-black">
-                  {cartItem.quantity} in Cart
+                  {cartItem.quantity || 1} in Cart
                 </span>
                 <button
-                  onClick={() => updateQuantity(product.id, cartItem.quantity + 1)}
+                  onClick={() => updateQuantity(product.id, (cartItem.quantity || 0) + 1)}
                   className="p-1.5 hover:bg-orange-600 rounded-xl transition-colors"
                 >
                   <Plus className="w-4 h-4" />

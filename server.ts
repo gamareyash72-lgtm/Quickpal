@@ -13,7 +13,8 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Initialize Google GenAI client (Server-Side only)
 let aiClient: GoogleGenAI | null = null;
@@ -254,45 +255,50 @@ RESPONSE INSTRUCTIONS:
 `;
 
     if (ai) {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
-        contents: message,
-        config: {
-          systemInstruction,
-          temperature: 0.7,
-        },
-      });
+      try {
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: message,
+          config: {
+            systemInstruction,
+            temperature: 0.7,
+          },
+        });
 
-      const reply = response.text || "I'm here to help you with your QuickPal grocery order! What can I check for you?";
-      return res.json({ reply, isAiPowered: true });
-    } else {
-      // Smart Fallback when GEMINI_API_KEY is not set or local fallback
-      const query = message.toLowerCase();
-      let reply = "";
-
-      if (query.includes("status") || query.includes("order") || query.includes("where")) {
-        if (activeOrders && activeOrders.length > 0) {
-          const ord = activeOrders[0];
-          reply = `Your order #${ord.id} is currently "${ord.status.replace(/_/g, ' ')}"! Estimated arrival is in ${ord.deliveryTimeMins || 10} minutes to ${ord.address?.area || 'your saved address'}.`;
-        } else {
-          reply = "You don't have any active orders right now! You can browse fresh groceries and order items with 10-minute delivery.";
-        }
-      } else if (query.includes("delivery") || query.includes("time") || query.includes("fast") || query.includes("fee")) {
-        reply = "QuickPal guarantees 10 to 15-minute express delivery! Shipping is FREE on orders above ₹199. Standard fee for smaller orders is ₹15.";
-      } else if (query.includes("payment") || query.includes("upi") || query.includes("cod") || query.includes("pay")) {
-        reply = "We accept instant UPI (GPay, PhonePe, Paytm), Cards, NetBanking, and Cash on Delivery (COD up to ₹200).";
-      } else if (query.includes("refund") || query.includes("return") || query.includes("damage") || query.includes("cancel")) {
-        reply = "QuickPal has a 100% Quality Guarantee! Damaged or missing items receive an instant full refund or replacement. You can also raise a ticket in the FAQ Dashboard.";
-      } else if (query.includes("milk") || query.includes("bread") || query.includes("dairy")) {
-        reply = "We have fresh Amul Gold Full Cream Milk (₹33) and Harvest Gold Whole Wheat Bread (₹45) available for 10-minute express delivery!";
-      } else if (query.includes("snack") || query.includes("chips") || query.includes("munchies")) {
-        reply = "Looking for munchies? Check out Lay's Magic Masala Chips (₹20) and Haldiram's Bhujia Sev (₹55) in our Snacks section!";
-      } else {
-        reply = `Hello! I'm QuickPal Assistant. I can help you track live orders, find fresh products, check delivery fees (FREE above ₹199), or guide you through UPI/COD payment modes. What can I help you with?`;
+        const reply = response.text || "I'm here to help you with your QuickPal grocery order! What can I check for you?";
+        return res.json({ reply, isAiPowered: true });
+      } catch (genErr: any) {
+        console.warn("[Gemini API Notice]:", genErr?.message || genErr);
+        // Fall back to rule-based contextual reply below
       }
-
-      return res.json({ reply, isAiPowered: false });
     }
+
+    // Smart Fallback when GEMINI_API_KEY is not set or during API limits
+    const query = message.toLowerCase();
+    let reply = "";
+
+    if (query.includes("status") || query.includes("order") || query.includes("where")) {
+      if (activeOrders && activeOrders.length > 0) {
+        const ord = activeOrders[0];
+        reply = `Your order #${ord.id} is currently "${ord.status.replace(/_/g, ' ')}"! Estimated arrival is in ${ord.deliveryTimeMins || 10} minutes to ${ord.address?.area || 'your saved address'}.`;
+      } else {
+        reply = "You don't have any active orders right now! You can browse fresh groceries and order items with 10-minute delivery.";
+      }
+    } else if (query.includes("delivery") || query.includes("time") || query.includes("fast") || query.includes("fee")) {
+      reply = "QuickPal guarantees 10 to 15-minute express delivery! Shipping is FREE on orders above ₹199. Standard fee for smaller orders is ₹15.";
+    } else if (query.includes("payment") || query.includes("upi") || query.includes("cod") || query.includes("pay")) {
+      reply = "We accept instant UPI (GPay, PhonePe, Paytm), Cards, NetBanking, and Cash on Delivery (COD up to ₹200).";
+    } else if (query.includes("refund") || query.includes("return") || query.includes("damage") || query.includes("cancel")) {
+      reply = "QuickPal has a 100% Quality Guarantee! Damaged or missing items receive an instant full refund or replacement. You can also raise a ticket in the FAQ Dashboard.";
+    } else if (query.includes("milk") || query.includes("bread") || query.includes("dairy")) {
+      reply = "We have fresh Amul Gold Full Cream Milk (₹33) and Harvest Gold Whole Wheat Bread (₹45) available for 10-minute express delivery!";
+    } else if (query.includes("snack") || query.includes("chips") || query.includes("munchies")) {
+      reply = "Looking for munchies? Check out Lay's Magic Masala Chips (₹20) and Haldiram's Bhujia Sev (₹55) in our Snacks section!";
+    } else {
+      reply = `Hello! I'm QuickPal Assistant. I can help you track live orders, find fresh products, check delivery fees (FREE above ₹199), or guide you through UPI/COD payment modes. What can I help you with?`;
+    }
+
+    return res.json({ reply, isAiPowered: false });
   } catch (err: any) {
     console.error("Error handling /api/chat route:", err);
     return res.status(500).json({

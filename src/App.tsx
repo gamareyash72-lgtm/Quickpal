@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { RoleBar } from './components/RoleBar';
 import { Header } from './components/Header';
@@ -16,6 +16,8 @@ import { WishlistModal } from './components/WishlistModal';
 import { AuthModal } from './components/AuthModal';
 import { FaqDashboard } from './components/FaqDashboard';
 import { AiAssistantModal } from './components/AiAssistantModal';
+import { MultiSiteDeploymentModal } from './components/MultiSiteDeploymentModal';
+import { getDetectedPortalMode, PortalMode } from './utils/portalConfig';
 import { UserRole } from './types';
 import {
   Home,
@@ -24,11 +26,15 @@ import {
   ShoppingBag,
   HelpCircle,
   Smartphone,
-  Apple
+  Apple,
+  Globe
 } from 'lucide-react';
 
 function AppContent() {
   const { currentRole, setCurrentRole, currentUser, orders, setSelectedCategoryId } = useApp();
+
+  const { mode: detectedPortalMode, isLockedStandalone } = getDetectedPortalMode();
+  const isCustomerPortal = detectedPortalMode === 'customer';
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -38,24 +44,35 @@ function AppContent() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authDefaultRole, setAuthDefaultRole] = useState<UserRole>('customer');
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
+  const [isDeploymentGuideOpen, setIsDeploymentGuideOpen] = useState(false);
 
   // FAQ Dashboard & AI Assistant States
   const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const [customerMainView, setCustomerMainView] = useState<'store' | 'faqs'>('store');
 
+  // Automatic portal detection based on Vercel Env Var or Subdomain/Query Parameter
+  useEffect(() => {
+    const { mode, isLockedStandalone } = getDetectedPortalMode();
+    if (isLockedStandalone && mode !== 'unified') {
+      setCurrentRole(mode as UserRole);
+    }
+  }, [setCurrentRole]);
+
   const handleOpenAuth = (role?: UserRole) => {
-    if (role) {
+    if (isCustomerPortal) {
+      setAuthDefaultRole('customer');
+    } else if (role) {
       setAuthDefaultRole(role);
     }
     setIsAuthModalOpen(true);
   };
 
-  const isStaffRoleRequested = currentRole === 'partner' || currentRole === 'admin' || currentRole === 'store' || currentRole === 'staff' || currentRole === 'owner';
+  const isStaffRoleRequested = !isCustomerPortal && (currentRole === 'partner' || currentRole === 'admin' || currentRole === 'store' || currentRole === 'owner');
 
   const isAuthorizedForRequestedRole = () => {
-    if (!currentUser) return false;
+    if (!currentUser || isCustomerPortal) return false;
     if (currentRole === 'partner' && currentUser.role === 'partner') return true;
-    if ((currentRole === 'store' || currentRole === 'staff') && (currentUser.role === 'store' || currentUser.role === 'admin' || currentUser.role === 'owner')) return true;
+    if (currentRole === 'store' && (currentUser.role === 'store' || currentUser.role === 'admin' || currentUser.role === 'owner')) return true;
     if (currentRole === 'admin' && (currentUser.role === 'admin' || currentUser.role === 'owner')) return true;
     if (currentRole === 'owner' && currentUser.role === 'owner') return true;
     return false;
@@ -64,7 +81,14 @@ function AppContent() {
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans selection:bg-emerald-500 selection:text-white transition-colors">
       {/* Role Switcher Top Bar */}
-      <RoleBar onOpenAuth={handleOpenAuth} />
+      <RoleBar
+        onOpenAuth={handleOpenAuth}
+        onOpenDeploymentGuide={() => {
+          if (!isCustomerPortal) {
+            setIsDeploymentGuideOpen(true);
+          }
+        }}
+      />
 
       {/* Main App Header */}
       <Header
@@ -72,7 +96,7 @@ function AppContent() {
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenWishlist={() => setIsWishlistOpen(true)}
         onOpenOrders={() => setIsOrderHistoryOpen(true)}
-        onOpenAuth={() => handleOpenAuth(currentRole)}
+        onOpenAuth={() => handleOpenAuth('customer')}
         onOpenAiAssistant={() => setIsAiAssistantOpen(true)}
         onOpenFaqDashboard={() => setCustomerMainView(prev => prev === 'faqs' ? 'store' : 'faqs')}
       />
@@ -182,7 +206,7 @@ function AppContent() {
           <>
             {currentRole === 'partner' && <DeliveryPartnerDashboard />}
             {currentRole === 'admin' && <AdminDashboard />}
-            {(currentRole === 'store' || currentRole === 'staff') && <StoreStaffDashboard />}
+            {currentRole === 'store' && <StoreStaffDashboard />}
             {currentRole === 'owner' && <OwnerDashboard />}
           </>
         )}
@@ -296,6 +320,20 @@ function AppContent() {
         onOpenOrders={() => setIsOrderHistoryOpen(true)}
         onOpenFaqDashboard={() => setCustomerMainView('faqs')}
       />
+
+      {!isCustomerPortal && (
+        <MultiSiteDeploymentModal
+          isOpen={isDeploymentGuideOpen}
+          onClose={() => setIsDeploymentGuideOpen(false)}
+          onSelectPortal={portal => {
+            if (portal === 'unified') {
+              setCurrentRole('customer');
+            } else {
+              setCurrentRole(portal as UserRole);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

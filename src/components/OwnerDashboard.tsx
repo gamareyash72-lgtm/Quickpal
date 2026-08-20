@@ -79,6 +79,7 @@ export const OwnerDashboard: React.FC = () => {
       phone: userForm.phone.trim() || undefined,
       email: emailToUse,
       password: userForm.password.trim(),
+      status: userForm.isActive ? 'ACTIVE' : 'INACTIVE',
       isActive: userForm.isActive,
       isVerified: true
     });

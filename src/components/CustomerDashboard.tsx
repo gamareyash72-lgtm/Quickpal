@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Product, Order } from '../types';
 import { ProductDetailModal } from './ProductDetailModal';
@@ -20,7 +20,11 @@ import {
   Images,
   MapPin,
   AlertTriangle,
-  Trash2
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  SlidersHorizontal,
+  Layers
 } from 'lucide-react';
 
 interface CustomerDashboardProps {
@@ -65,6 +69,30 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   const [showAddAddressModal, setShowAddAddressModal] = useState(false);
   const [addressToDelete, setAddressToDelete] = useState<{ id: string; label: string; addressLine: string } | null>(null);
   const [dismissedOrderId, setDismissedOrderId] = useState<string | null>(null);
+
+  const topCategoryScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollTopCategories = (direction: 'left' | 'right') => {
+    if (topCategoryScrollRef.current) {
+      const scrollAmount = direction === 'left' ? -260 : 260;
+      topCategoryScrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  // Compute non-hidden product count per category
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    products.forEach(p => {
+      if (p && !p.isHidden) {
+        counts[p.category] = (counts[p.category] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [products]);
+
+  const totalAvailableProducts = useMemo(() => {
+    return products.filter(p => p && !p.isHidden).length;
+  }, [products]);
 
   // Active trackable order for floating widget (strictly scoped to the currently logged in customer or locally placed order)
   const isMyCustomerOrder = (order: Order) => {
@@ -199,6 +227,128 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
             <Plus className="w-3.5 h-3.5" />
             New Address
           </button>
+        </div>
+      </div>
+
+      {/* Horizontal Pill-Shaped Category Filter Buttons at Top */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-3 sm:p-4 shadow-sm space-y-2.5">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-orange-500" />
+              Quick Category Filter
+            </span>
+            {selectedCategoryId ? (
+              <span className="bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-xs">
+                <span>Filter: <strong>{categories.find(c => c.id === selectedCategoryId)?.name || 'Category'}</strong></span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryId(null)}
+                  className="hover:text-rose-600 p-0.5 rounded-full hover:bg-orange-200 dark:hover:bg-orange-900 transition-colors"
+                  title="Clear category filter"
+                  aria-label="Clear category filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ) : (
+              <span className="text-[10px] text-gray-400 font-bold hidden sm:inline-block">
+                • Tap any category to filter
+              </span>
+            )}
+          </div>
+
+          {/* Scroll Controls for Desktop */}
+          <div className="flex items-center gap-1">
+            {selectedCategoryId && (
+              <button
+                type="button"
+                onClick={() => setSelectedCategoryId(null)}
+                className="text-[11px] font-bold text-orange-600 dark:text-orange-400 hover:underline mr-2 hidden sm:inline-flex items-center gap-1"
+              >
+                Show All <X className="w-3 h-3" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => scrollTopCategories('left')}
+              className="p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-950 hover:border-orange-300 transition-colors"
+              aria-label="Scroll categories left"
+              title="Scroll left"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollTopCategories('right')}
+              className="p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-950 hover:border-orange-300 transition-colors"
+              aria-label="Scroll categories right"
+              title="Scroll right"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Pill-Shaped Buttons Container */}
+        <div
+          ref={topCategoryScrollRef}
+          className="flex items-center gap-2 overflow-x-auto py-1 scroll-smooth no-scrollbar"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {/* All Items Pill */}
+          <button
+            type="button"
+            onClick={() => setSelectedCategoryId(null)}
+            className={`px-4 py-2 rounded-full text-xs font-bold transition-all shrink-0 flex items-center gap-2 border whitespace-nowrap shadow-xs ${
+              !selectedCategoryId
+                ? 'bg-orange-500 text-white border-orange-600 shadow-md shadow-orange-500/20 font-black scale-[1.02]'
+                : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700 hover:bg-orange-50 dark:hover:bg-orange-950/50 hover:border-orange-300'
+            }`}
+          >
+            <span className="text-sm">✨</span>
+            <span>All Products</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                !selectedCategoryId
+                  ? 'bg-orange-600 text-white'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+              }`}
+            >
+              {totalAvailableProducts}
+            </span>
+          </button>
+
+          {/* Category Pill Buttons */}
+          {categories.map(cat => {
+            const isSelected = selectedCategoryId === cat.id;
+            const count = categoryCounts[cat.id] || 0;
+
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategoryId(isSelected ? null : cat.id)}
+                className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all shrink-0 flex items-center gap-2 border whitespace-nowrap shadow-xs ${
+                  isSelected
+                    ? 'bg-orange-500 text-white border-orange-600 shadow-md shadow-orange-500/20 font-black scale-[1.02]'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700 hover:bg-orange-50 dark:hover:bg-orange-950/50 hover:border-orange-300'
+                }`}
+              >
+                <span className="text-sm shrink-0">{cat.iconEmoji || '📦'}</span>
+                <span>{cat.name}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    isSelected
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -433,10 +583,14 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 sm:gap-4">
             {filteredProducts.map(prod => {
-              const cartItem = cartItems.find(item => item.product.id === prod.id);
-              const isWishlisted = wishlistProductIds.includes(prod.id);
+              const cartItem = cartItems?.find(item => item?.product?.id === prod.id);
+              const isWishlisted = wishlistProductIds?.includes(prod.id);
               const mainImgUrl = prod.image || (prod.images && prod.images[0]) || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80';
-              const hasMultipleImages = prod.images && prod.images.length > 1;
+              const hasMultipleImages = Array.isArray(prod.images) && prod.images.length > 1;
+              const priceVal = Number(prod.price) || 0;
+              const origPriceVal = Number(prod.originalPrice) || priceVal;
+              const deliveryMins = Number(prod.deliveryTimeMins) || 10;
+              const ratingVal = Number(prod.rating) || 5.0;
 
               return (
                 <div
@@ -464,7 +618,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   <div className="h-32 bg-gray-50 dark:bg-gray-800/60 rounded-xl flex items-center justify-center relative overflow-hidden p-2 group-hover:bg-orange-50/30 transition-colors">
                     <img
                       src={mainImgUrl}
-                      alt={prod.name}
+                      alt={prod.name || 'Product'}
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                     />
@@ -490,21 +644,21 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="bg-orange-50 dark:bg-orange-950/60 w-fit px-2 py-0.5 rounded text-[10px] font-bold text-orange-700 dark:text-orange-300 flex items-center gap-1">
                       <Clock className="w-2.5 h-2.5 text-orange-600" />
-                      {prod.deliveryTimeMins} MINS
+                      {deliveryMins} MINS
                     </span>
                     <span className="text-[10px] text-gray-400 flex items-center gap-0.5 font-bold">
                       <Star className="w-2.5 h-2.5 text-amber-500 fill-amber-500" />
-                      {prod.rating}
+                      {ratingVal}
                     </span>
                   </div>
 
                   {/* Title & Weight */}
                   <div>
                     <h4 className="text-xs font-bold text-gray-900 dark:text-gray-100 line-clamp-2 leading-snug group-hover:text-orange-600 transition-colors">
-                      {prod.name}
+                      {prod.name || 'Grocery Item'}
                     </h4>
                     <span className="text-[10px] text-gray-400 font-medium">
-                      {prod.weightUnit}
+                      {prod.weightUnit || '1 unit'}
                     </span>
                   </div>
 
@@ -515,11 +669,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   >
                     <div className="flex flex-col">
                       <span className="text-sm font-black text-gray-900 dark:text-gray-100">
-                        ₹{prod.price}
+                        ₹{priceVal}
                       </span>
-                      {prod.originalPrice > prod.price && (
+                      {origPriceVal > priceVal && (
                         <span className="text-[10px] text-gray-400 line-through leading-none">
-                          ₹{prod.originalPrice}
+                          ₹{origPriceVal}
                         </span>
                       )}
                     </div>
@@ -527,16 +681,16 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     {cartItem ? (
                       <div className="flex items-center bg-orange-500 text-white rounded-lg border border-orange-600 shadow-sm">
                         <button
-                          onClick={() => updateQuantity(prod.id, cartItem.quantity - 1)}
+                          onClick={() => updateQuantity(prod.id, (cartItem.quantity || 1) - 1)}
                           className="px-2 py-1 hover:bg-orange-600 rounded-l-lg"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
                         <span className="px-2 text-xs font-black">
-                          {cartItem.quantity}
+                          {cartItem.quantity || 1}
                         </span>
                         <button
-                          onClick={() => updateQuantity(prod.id, cartItem.quantity + 1)}
+                          onClick={() => updateQuantity(prod.id, (cartItem.quantity || 0) + 1)}
                           className="px-2 py-1 hover:bg-orange-600 rounded-r-lg"
                         >
                           <Plus className="w-3 h-3" />

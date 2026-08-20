@@ -80,22 +80,26 @@ export const Header: React.FC<HeaderProps> = ({
   // Filter products for instant dropdown results
   const matchingProducts = searchQuery.trim()
     ? products.filter(p => {
-        if (p.isHidden) return false;
+        if (!p || p.isHidden) return false;
         const q = searchQuery.toLowerCase().trim();
+        const prodName = p.name ? p.name.toLowerCase() : '';
+        const prodDesc = p.description ? p.description.toLowerCase() : '';
+        const prodCat = p.category ? p.category.toLowerCase() : '';
         const catObj = categories.find(c => c.id === p.category);
         const catName = catObj ? catObj.name.toLowerCase() : '';
+        const prodWeight = p.weightUnit ? p.weightUnit.toLowerCase() : '';
         return (
-          p.name.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q) ||
+          prodName.includes(q) ||
+          prodDesc.includes(q) ||
+          prodCat.includes(q) ||
           catName.includes(q) ||
-          (p.weightUnit && p.weightUnit.toLowerCase().includes(q))
+          prodWeight.includes(q)
         );
       }).slice(0, 6)
     : [];
 
   const matchingCategories = searchQuery.trim()
-    ? categories.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase().trim()))
+    ? categories.filter(c => c && c.name && c.name.toLowerCase().includes(searchQuery.toLowerCase().trim()))
     : [];
 
   const unreadNotifs = notifications.filter(
@@ -469,7 +473,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div className="text-left hidden lg:block">
             <span className="block text-[9px] uppercase text-yellow-200 leading-none">
-              {currentUser ? currentUser.role : 'Guest'}
+              {currentUser ? 'My Account' : 'Welcome'}
             </span>
             <span className="block font-extrabold max-w-[90px] truncate leading-tight">
               {currentUser ? currentUser.name : 'Sign In / Register'}

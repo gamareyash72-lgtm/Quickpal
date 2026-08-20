@@ -255,21 +255,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     e.preventDefault();
     const finalImage = productForm.image || (productForm.images && productForm.images[0]) || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80';
     const finalImages = (productForm.images && productForm.images.length > 0) ? productForm.images : [finalImage];
+    const pPrice = Number(productForm.price) || 0;
+    const pOrigPrice = Number(productForm.originalPrice) || pPrice;
+    const pStock = Number(productForm.stock) || 0;
+    const pDelivery = Number(productForm.deliveryTimeMins) || 10;
 
     if (editingProduct) {
       updateProduct({
         ...editingProduct,
         ...productForm,
+        price: pPrice,
+        originalPrice: pOrigPrice,
+        stock: pStock,
+        deliveryTimeMins: pDelivery,
         image: finalImage,
         images: finalImages,
         isOutOfStock: editingProduct.isOutOfStock,
         isHidden: editingProduct.isHidden,
-        rating: editingProduct.rating,
-        reviewsCount: editingProduct.reviewsCount
+        rating: Number(editingProduct.rating) || 5.0,
+        reviewsCount: Number(editingProduct.reviewsCount) || 1
       });
     } else {
       addProduct({
         ...productForm,
+        price: pPrice,
+        originalPrice: pOrigPrice,
+        stock: pStock,
+        deliveryTimeMins: pDelivery,
         image: finalImage,
         images: finalImages,
         isOutOfStock: false,
@@ -437,6 +449,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
       phone: userForm.phone,
       email: emailToUse,
       password: userForm.password,
+      status: userForm.isActive ? 'ACTIVE' : 'INACTIVE',
       isActive: userForm.isActive
     });
     alert(res.message);
@@ -1954,7 +1967,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
               </div>
             </div>
 
-            {/* SECTION 5: CUSTOM CHECKOUT NOTE */}
+            {/* SECTION 5: CUSTOMER CARE HELPLINE & PRIVACY SHIELD */}
+            <div className="bg-gradient-to-br from-amber-50/90 via-orange-50/50 to-amber-100/40 dark:from-amber-950/40 dark:to-orange-950/20 p-5 rounded-3xl border border-amber-300 dark:border-amber-700/60 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📞</span>
+                  <h4 className="text-sm font-black text-amber-950 dark:text-amber-200 uppercase tracking-wider">
+                    5. Store Customer Care Helpline & Caller ID Privacy Shield
+                  </h4>
+                </div>
+                <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-black px-3 py-1 rounded-full border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
+                  <Lock className="w-3.5 h-3.5" /> 100% Privacy Masked
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 text-[10px] font-black uppercase text-gray-700 dark:text-gray-300">
+                    Real Customer Care Number (Hidden From Public)
+                  </label>
+                  <input
+                    type="tel"
+                    value={paySettingsForm.customerCarePhone || '932605337'}
+                    onChange={e => setPaySettingsForm({ ...paySettingsForm, customerCarePhone: e.target.value })}
+                    placeholder="932605337"
+                    className="w-full bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 rounded-xl px-3 py-2 text-xs font-mono font-black text-orange-600 dark:text-orange-400"
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Customers will never see this exact number. They will only connect through an encrypted VoIP proxy.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white/80 dark:bg-gray-800/80 rounded-2xl border border-amber-200 dark:border-amber-800 text-xs space-y-1">
+                  <span className="font-black text-amber-900 dark:text-amber-300 uppercase text-[10px] block">
+                    Customer-Facing Masked Display:
+                  </span>
+                  <p className="font-mono font-extrabold text-emerald-700 dark:text-emerald-400 text-sm">
+                    +91 {String(paySettingsForm.customerCarePhone || '932605337').slice(0, 2)}••••••{String(paySettingsForm.customerCarePhone || '932605337').slice(-2)} 🔒
+                  </p>
+                  <p className="text-[10px] text-gray-500">
+                    Verified Support Helpline • All incoming & outgoing customer calls are bridged securely.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 6: CUSTOM CHECKOUT NOTE */}
             <div className="bg-gray-50 dark:bg-gray-800/60 p-4 rounded-3xl border border-gray-200 dark:border-gray-700 space-y-2">
               <label className="block text-[10px] font-black uppercase text-gray-500 dark:text-gray-400">
                 Customer Checkout Payment Policy / Guidance Note

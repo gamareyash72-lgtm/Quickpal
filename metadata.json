@@ -1,6 +1,8 @@
 {
-  "name": "QuickPal",
-  "description": "Fast Hyperlocal Grocery & Essentials Delivery App with Customer, Delivery Partner, Admin, and Owner Dashboards",
+  "name": "Remix QuickPal",
+  "description": "QuickPal is a local on-demand delivery platform designed to make everyday shopping and deliveries faster, easier, and more convenient.\n\nWe connect customers, local stores, restaurants, grocery shops, and delivery partners on one platform.\n\n🛒 What QuickPal Offers\n🥦 Grocery \u0026 Daily Essentials – Fruits, vegetables, dairy products, snacks, beverages, household items and more.\n🍔 Food \u0026 Fast Food Delivery – Vada Pav, Samosa, Waffles, snacks, meals, beverages and local food.\n🏪 Local Store Delivery – Customers can order products from nearby grocery and other local stores.\n📦 On-Demand Delivery – Fast pickup and doorstep delivery for eligible local orders.\n🛵 Delivery Partner Network – Delivery partners can accept orders, pick up products and deliver them to customers.\n💳 Multiple Payment Options – Online payment, UPI and Cash on Delivery.\n📍 Local Delivery Focus – Serving customers and businesses within the selected service area.\n👨‍💼 Business/Store Partner Support – Local shops can list their products and receive customer orders.\n📊 Admin \u0026 Store Management – Order management, product/stock management, delivery partner management and order tracking.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

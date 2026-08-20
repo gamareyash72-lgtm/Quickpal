@@ -144,7 +144,9 @@ export const INITIAL_PAYMENT_SETTINGS: PaymentSettings = {
   allowCards: true,
   razorpayKeyId: 'rzp_live_QP991208',
   stripePublicKey: 'pk_live_QP88123',
-  checkoutNote: 'Please verify payment details before completing order. Instant approval for UPI QR transactions.'
+  checkoutNote: 'Please verify payment details before completing order. Instant approval for UPI QR transactions.',
+  customerCarePhone: '932605337',
+  customerCareMasked: true
 };
 
 export const INITIAL_ADDRESSES: DeliveryAddress[] = [

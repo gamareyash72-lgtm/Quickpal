@@ -16,8 +16,13 @@ import {
   ShieldCheck,
   Send,
   CheckCircle2,
-  Bot
+  Bot,
+  Phone,
+  Lock,
+  Headphones
 } from 'lucide-react';
+import { SecureCallModal } from './SecureCallModal';
+import { maskCustomerCarePhone, DEFAULT_CUSTOMER_CARE_PHONE } from '../utils/phonePrivacy';
 
 interface FaqDashboardProps {
   onOpenAiAssistant: () => void;
@@ -28,7 +33,7 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
   onOpenAiAssistant,
   onOpenOrders
 }) => {
-  const { faqs, voteFAQHelpful, submitSupportTicket, currentUser } = useApp();
+  const { faqs, voteFAQHelpful, submitSupportTicket, currentUser, paymentSettings } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -38,12 +43,16 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
   // Ticket Form State
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [ticketSubmitted, setTicketSubmitted] = useState(false);
+  const [showCustomerCareCallModal, setShowCustomerCareCallModal] = useState(false);
   const [ticketForm, setTicketForm] = useState({
     subject: '',
     message: '',
     phone: currentUser?.phone || '',
     orderId: ''
   });
+
+  const customerCareRawPhone = paymentSettings?.customerCarePhone || DEFAULT_CUSTOMER_CARE_PHONE;
+  const maskedCustomerCare = maskCustomerCarePhone(customerCareRawPhone);
 
   const categories = [
     { id: 'all', label: 'All Topics', icon: HelpCircle },
@@ -107,40 +116,88 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
           </p>
           <div className="pt-2 flex flex-wrap items-center gap-3">
             <button
+              onClick={() => setShowCustomerCareCallModal(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-950/30 transition-transform active:scale-95 border border-emerald-400/40"
+            >
+              <Phone className="w-4 h-4 text-emerald-200" />
+              Call Customer Care ({maskedCustomerCare.split(' ')[1]} 🔒)
+            </button>
+            <button
               onClick={onOpenAiAssistant}
-              className="bg-orange-950 text-yellow-300 hover:bg-orange-900 px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 shadow-lg border border-yellow-300/30 transition-transform active:scale-95"
+              className="bg-orange-950 text-yellow-300 hover:bg-orange-900 px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 shadow-lg border border-yellow-300/30 transition-transform active:scale-95"
             >
               <Bot className="w-4 h-4 text-yellow-300" />
-              Ask AI Support Assistant
+              Ask AI Assistant
             </button>
             <button
               onClick={() => setShowTicketModal(true)}
               className="bg-white/20 hover:bg-white/30 text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 backdrop-blur-md border border-white/30"
             >
               <MessageSquare className="w-4 h-4" />
-              Contact Store Support
+              Submit Ticket
             </button>
           </div>
         </div>
 
-        {/* Decorative AI Card */}
+        {/* Decorative Customer Care / AI Card */}
         <div
-          onClick={onOpenAiAssistant}
-          className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-4 rounded-2xl border border-white/20 text-left max-w-xs w-full cursor-pointer hover:bg-white/20 transition-all shadow-inner"
+          onClick={() => setShowCustomerCareCallModal(true)}
+          className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-4 rounded-2xl border border-white/20 text-left max-w-xs w-full cursor-pointer hover:bg-white/20 transition-all shadow-inner group"
         >
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-8 h-8 rounded-full bg-yellow-300 text-orange-950 flex items-center justify-center font-black">
-              🤖
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black shadow-xs group-hover:scale-105 transition-transform">
+                <Headphones className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-black text-white">Live Customer Care</p>
+                <p className="text-[10px] text-emerald-300 font-bold flex items-center gap-1">
+                  <Lock className="w-2.5 h-2.5" /> 100% Private Call Bridge
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-black text-white">Instant AI Assistant</p>
-              <p className="text-[10px] text-yellow-200 font-bold">Online 24/7 • Real-time status</p>
-            </div>
+            <span className="bg-emerald-950/60 text-emerald-300 text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-500/30">
+              Online
+            </span>
           </div>
-          <p className="text-[11px] text-orange-100 italic bg-black/20 p-2 rounded-xl">
-            "Ask me to find products, verify order refund status, or check delivery times!"
-          </p>
+          <div className="bg-black/25 p-2.5 rounded-xl text-left space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-mono font-bold text-amber-200">
+              <span>{maskedCustomerCare}</span>
+              <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">Encrypted</span>
+            </div>
+            <p className="text-[10px] text-orange-100/90 leading-tight">
+              Tap to call our customer care directly with masked caller ID privacy.
+            </p>
+          </div>
         </div>
+      </div>
+
+      {/* Customer Care Direct Assistance Strip */}
+      <div className="bg-gradient-to-r from-emerald-900/40 via-teal-900/30 to-emerald-950/40 border border-emerald-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+        <div className="flex items-center gap-3 text-left">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-black text-gray-900 dark:text-gray-100">
+                Official Customer Care Support Line
+              </h4>
+              <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5" /> Privacy Protected
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-600 dark:text-gray-400">
+              Proxy Helpline: <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{maskedCustomerCare}</span> • Your phone number is never disclosed.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowCustomerCareCallModal(true)}
+          className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all transform active:scale-95 shrink-0"
+        >
+          <Phone className="w-3.5 h-3.5" /> Call Customer Care
+        </button>
       </div>
 
       {/* Search Bar */}
@@ -409,6 +466,18 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* 100% Private Customer Care VoIP Call Modal */}
+      {showCustomerCareCallModal && (
+        <SecureCallModal
+          isOpen={showCustomerCareCallModal}
+          onClose={() => setShowCustomerCareCallModal(false)}
+          targetRole="customercare"
+          recipientRole="Customer Care & Support Helpline"
+          recipientName="QuickPal Customer Care Desk"
+          rawPhoneNumber={customerCareRawPhone}
+        />
       )}
     </div>
   );

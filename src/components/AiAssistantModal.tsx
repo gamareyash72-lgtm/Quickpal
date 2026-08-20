@@ -108,27 +108,54 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
         return false;
       }).slice(0, 3);
 
+      // Send compact payload to prevent payload size issues
+      const compactCatalog = products.slice(0, 30).map(p => ({
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        originalPrice: p.originalPrice,
+        category: p.category,
+        stock: p.stock,
+        deliveryTimeMins: p.deliveryTimeMins,
+        description: p.description?.slice(0, 100) || ''
+      }));
+
+      const compactOrders = orders
+        .filter(o => o.status !== 'delivered' && o.status !== 'cancelled')
+        .slice(0, 5)
+        .map(o => ({
+          id: o.id,
+          status: o.status,
+          total: o.total,
+          itemCount: o.items?.length || 0,
+          area: o.address?.area || '',
+          deliveryTimeMins: o.deliveryTimeMins
+        }));
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: textToSend,
-          catalog: products.map(p => ({
-            id: p.id,
-            name: p.name,
-            price: p.price,
-            originalPrice: p.originalPrice,
-            category: p.category,
-            stock: p.stock,
-            deliveryTimeMins: p.deliveryTimeMins,
-            description: p.description
-          })),
-          activeOrders: orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled'),
-          userAddress: selectedAddress
+          catalog: compactCatalog,
+          activeOrders: compactOrders,
+          userAddress: selectedAddress ? {
+            label: selectedAddress.label,
+            area: selectedAddress.area,
+            city: selectedAddress.city,
+            pincode: selectedAddress.pincode
+          } : undefined
         })
       });
 
-      const data = await response.json();
+      let data: any = {};
+      if (response.ok) {
+        try {
+          data = await response.json();
+        } catch {
+          data = {};
+        }
+      }
 
       const assistantMsg: ChatMessage = {
         id: 'ast-' + Date.now(),

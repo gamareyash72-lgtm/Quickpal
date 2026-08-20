@@ -62,7 +62,7 @@ export const DeliveryPartnerDashboard: React.FC = () => {
   const [syncError, setSyncError] = useState<{ code: string; message: string; timestamp: string } | null>(null);
   const [reconnectCount, setReconnectCount] = useState<number>(0);
 
-  const isPartnerUser = currentUser && (currentUser.role === 'partner' || currentUser.role === 'delivery_partner');
+  const isPartnerUser = currentUser && currentUser.role === 'partner';
   const partnerUid = currentUser?.id || activePartner?.id || 'dp-1';
 
   // Manual or automatic re-authentication & reconnection handler
@@ -128,15 +128,13 @@ export const DeliveryPartnerDashboard: React.FC = () => {
         }
       },
       async (err) => {
-        // Explicit structured error logging instead of failing silently
-        console.error('[DeliveryPartnerDashboard onSnapshot Listener Error]', {
+        console.warn('[DeliveryPartnerDashboard onSnapshot Listener Notice]', {
           code: err.code,
           message: err.message,
           name: err.name,
           partnerId: partnerUid,
           authUid: auth.currentUser?.uid || 'anonymous/unauthenticated',
-          timestamp: new Date().toISOString(),
-          details: err
+          timestamp: new Date().toISOString()
         });
 
         setSyncError({
@@ -148,13 +146,11 @@ export const DeliveryPartnerDashboard: React.FC = () => {
 
         // Handle permission-denied or unauthenticated by re-authenticating / refreshing token
         if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
-          console.warn('[DeliveryPartnerDashboard] Permission denied or unauthenticated. Attempting automatic token refresh...');
           if (auth.currentUser) {
             try {
               await auth.currentUser.getIdToken(true);
-              console.log('[DeliveryPartnerDashboard] Successfully refreshed token after permission error.');
             } catch (refreshErr) {
-              console.error('[DeliveryPartnerDashboard] Error refreshing auth token:', refreshErr);
+              console.warn('[DeliveryPartnerDashboard] Token refresh notice:', refreshErr);
             }
           }
         }
@@ -178,7 +174,7 @@ export const DeliveryPartnerDashboard: React.FC = () => {
     const isEligibleStatus = !s || s === 'pending' || s === 'placed' || s === 'store_accepted' || s === 'ready_for_delivery' || s === 'processing';
     const isUnassigned = !o?.deliveryPartnerId && !o?.assignedPartnerId;
     const notResponded = !(o?.partnerResponseLogs || []).some(l => l?.partnerId === partnerUid);
-    const pin = (o?.deliveryPincode || o?.address?.pincode || (typeof o?.address === 'string' && o.address.includes('401102') ? '401102' : '') || '401102').trim();
+    const pin = (o?.deliveryPincode || (typeof o?.address === 'object' ? (o.address as any)?.pincode : '') || (typeof o?.deliveryAddress === 'string' && o.deliveryAddress.includes('401102') ? '401102' : '') || '401102').trim();
     const activeZone = (selectedZonePincode || activePartner?.pinCode || '401102').trim();
     const isZoneMatch = !activeZone || !pin || pin === activeZone || pin === '401102' || activeZone === '401102';
 
@@ -503,7 +499,7 @@ export const DeliveryPartnerDashboard: React.FC = () => {
                     <div className="flex items-center gap-1.5 text-orange-700 dark:text-orange-400 font-extrabold uppercase text-[10px] mb-1">
                       <Building className="w-3.5 h-3.5" /> 1. Pickup Store (Map Route Leg 1)
                     </div>
-                    <p className="font-bold text-gray-900 dark:text-gray-100">{ord.storeInfo?.name || ord.pickupLocation}</p>
+                    <p className="font-bold text-gray-900 dark:text-gray-100">{ord.storeInfo?.name || (typeof ord.pickupLocation === 'string' ? ord.pickupLocation : 'QuickPal Store')}</p>
                     <p className="text-[11px] text-gray-500">{ord.storeInfo?.address || 'Shop #4, Station Road, Saphale East'}</p>
                   </div>
 
@@ -533,7 +529,7 @@ export const DeliveryPartnerDashboard: React.FC = () => {
                     Order Items Checked by Store ({(ord.items || []).length}):
                   </span>
                   <p className="text-gray-700 dark:text-gray-300 font-medium truncate">
-                    {(ord.items || []).map(i => `${i.quantity}x ${i.product?.name || i.productName || 'Item'}`).join(', ')}
+                    {(ord.items || []).map(i => `${i.quantity}x ${i.product?.name || (i as any).productName || 'Item'}`).join(', ')}
                   </p>
                   <p className="text-[10px] text-gray-500 mt-1">
                     Payment Method: <strong className="uppercase">{ord.paymentMethod}</strong> (Total ₹{ord.total})
@@ -602,7 +598,7 @@ export const DeliveryPartnerDashboard: React.FC = () => {
                       <span className="font-extrabold text-orange-700 dark:text-orange-400 text-[10px] uppercase block">
                         1. Store Pickup Address
                       </span>
-                      <p className="font-bold text-gray-900 dark:text-gray-100">{ord.storeInfo?.name || ord.pickupLocation}</p>
+                      <p className="font-bold text-gray-900 dark:text-gray-100">{ord.storeInfo?.name || (typeof ord.pickupLocation === 'string' ? ord.pickupLocation : 'QuickPal Store')}</p>
                       <p className="text-[11px] text-gray-500">{ord.storeInfo?.address || 'Shop No. 4, Station Road, Saphale East'}</p>
                     </div>
 

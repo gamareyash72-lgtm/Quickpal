@@ -12,7 +12,7 @@ export const WishlistModal: React.FC<WishlistModalProps> = ({ isOpen, onClose })
 
   if (!isOpen) return null;
 
-  const wishlistedProducts = products.filter(p => wishlistProductIds.includes(p.id));
+  const wishlistedProducts = products.filter(p => p && p.id && wishlistProductIds?.includes(p.id));
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
@@ -39,44 +39,58 @@ export const WishlistModal: React.FC<WishlistModalProps> = ({ isOpen, onClose })
               <p>Your wishlist is currently empty.</p>
             </div>
           ) : (
-            wishlistedProducts.map(prod => (
-              <div
-                key={prod.id}
-                className="p-3 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center justify-between gap-3 border border-gray-100 dark:border-gray-700"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl bg-white dark:bg-gray-700 p-2 rounded-xl shadow-inner">
-                    {prod.imageEmoji}
-                  </span>
-                  <div>
-                    <h5 className="text-xs font-bold">{prod.name}</h5>
-                    <span className="text-[10px] text-gray-400">{prod.weightUnit}</span>
-                    <p className="text-xs font-black text-orange-600 dark:text-orange-400 mt-0.5">
-                      ₹{prod.price}
-                    </p>
+            wishlistedProducts.map(prod => {
+              const mainImg = prod.image || (Array.isArray(prod.images) && prod.images[0]);
+              const priceVal = Number(prod.price) || 0;
+
+              return (
+                <div
+                  key={prod.id}
+                  className="p-3 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center justify-between gap-3 border border-gray-100 dark:border-gray-700"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-12 h-12 rounded-xl bg-white dark:bg-gray-700 p-1 flex items-center justify-center overflow-hidden border border-gray-200 dark:border-gray-600 shrink-0">
+                      {mainImg ? (
+                        <img
+                          src={mainImg}
+                          alt={prod.name || 'Product'}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <span className="text-2xl">{prod.imageEmoji || '📦'}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <h5 className="text-xs font-bold truncate">{prod.name || 'Product'}</h5>
+                      <span className="text-[10px] text-gray-400 block">{prod.weightUnit || '1 unit'}</span>
+                      <p className="text-xs font-black text-orange-600 dark:text-orange-400 mt-0.5">
+                        ₹{priceVal}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        addToCart(prod);
+                        toggleWishlist(prod.id);
+                      }}
+                      className="bg-orange-500 hover:bg-orange-600 text-white font-black px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 shadow-sm transition-transform active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add
+                    </button>
+
+                    <button
+                      onClick={() => toggleWishlist(prod.id)}
+                      className="p-1.5 text-gray-400 hover:text-rose-600"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      addToCart(prod);
-                      toggleWishlist(prod.id);
-                    }}
-                    className="bg-orange-500 hover:bg-orange-600 text-white font-black px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 shadow-sm"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add to Cart
-                  </button>
-
-                  <button
-                    onClick={() => toggleWishlist(prod.id)}
-                    className="p-1.5 text-gray-400 hover:text-rose-600"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

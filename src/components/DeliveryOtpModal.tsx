@@ -18,13 +18,15 @@ interface DeliveryOtpModalProps {
   onClose: () => void;
   order: Order | null;
   onDeliveryCompleted?: () => void;
+  onSuccess?: () => void;
 }
 
 export const DeliveryOtpModal: React.FC<DeliveryOtpModalProps> = ({
   isOpen,
   onClose,
   order,
-  onDeliveryCompleted
+  onDeliveryCompleted,
+  onSuccess
 }) => {
   const { completeDeliveryWithOtp } = useApp();
   
@@ -138,6 +140,9 @@ export const DeliveryOtpModal: React.FC<DeliveryOtpModalProps> = ({
       if (res.success) {
         if (onDeliveryCompleted) {
           onDeliveryCompleted();
+        }
+        if (onSuccess) {
+          onSuccess();
         }
         onClose();
       } else {

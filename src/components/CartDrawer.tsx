@@ -104,42 +104,59 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 </button>
               </div>
 
-              {cartItems.map(item => (
-                <div
-                  key={item.product.id}
-                  className="p-3 bg-gray-50 dark:bg-gray-800/80 rounded-2xl border border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl bg-white dark:bg-gray-700 p-2 rounded-xl shadow-inner shrink-0">
-                      {item.product.imageEmoji}
-                    </span>
-                    <div>
-                      <h5 className="text-xs font-bold line-clamp-1">{item.product.name}</h5>
-                      <span className="text-[10px] text-gray-400">{item.product.weightUnit}</span>
-                      <p className="text-xs font-black text-orange-600 dark:text-orange-400 mt-0.5">
-                        ₹{item.product.price * item.quantity}
-                      </p>
-                    </div>
-                  </div>
+              {cartItems
+                .filter(item => item && item.product && item.product.id)
+                .map(item => {
+                  const itemPrice = Number(item.product.price) || 0;
+                  const itemQty = Number(item.quantity) || 1;
+                  const mainImg = item.product.image || (Array.isArray(item.product.images) && item.product.images[0]);
 
-                  {/* Quantity Stepper */}
-                  <div className="flex items-center bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-1 shadow-sm shrink-0">
-                    <button
-                      onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                      className="p-1 text-gray-600 dark:text-gray-300 hover:text-orange-600"
+                  return (
+                    <div
+                      key={item.product.id}
+                      className="p-3 bg-gray-50 dark:bg-gray-800/80 rounded-2xl border border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3"
                     >
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="px-2 text-xs font-black">{item.quantity}</span>
-                    <button
-                      onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                      className="p-1 text-gray-600 dark:text-gray-300 hover:text-orange-600"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-12 h-12 rounded-xl bg-white dark:bg-gray-700 p-1 flex items-center justify-center overflow-hidden border border-gray-200 dark:border-gray-600 shrink-0">
+                          {mainImg ? (
+                            <img
+                              src={mainImg}
+                              alt={item.product.name || 'Product'}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-contain"
+                            />
+                          ) : (
+                            <span className="text-2xl">{item.product.imageEmoji || '📦'}</span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <h5 className="text-xs font-bold line-clamp-1 truncate">{item.product.name || 'Product'}</h5>
+                          <span className="text-[10px] text-gray-400 block">{item.product.weightUnit || '1 unit'}</span>
+                          <p className="text-xs font-black text-orange-600 dark:text-orange-400 mt-0.5">
+                            ₹{itemPrice * itemQty}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Quantity Stepper */}
+                      <div className="flex items-center bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-1 shadow-sm shrink-0">
+                        <button
+                          onClick={() => updateQuantity(item.product.id, itemQty - 1)}
+                          className="p-1 text-gray-600 dark:text-gray-300 hover:text-orange-600"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="px-2 text-xs font-black">{itemQty}</span>
+                        <button
+                          onClick={() => updateQuantity(item.product.id, itemQty + 1)}
+                          className="p-1 text-gray-600 dark:text-gray-300 hover:text-orange-600"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
             </>
           )}
         </div>

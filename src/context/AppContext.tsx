@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { verifyPaymentDetails } from '../utils/paymentVerifier';
+import { safeJsonParse, safeLocalStorageSet } from '../utils/safeStorage';
+import { getDetectedPortalMode } from '../utils/portalConfig';
 import {
   auth,
   db,
@@ -185,93 +187,42 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>('partner-1');
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
 
-  const [users, setUsers] = useState<AppUser[]>(() => {
-    const saved = localStorage.getItem('qp_users');
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
-  });
+  const [users, setUsers] = useState<AppUser[]>(() => safeJsonParse('qp_users', INITIAL_USERS));
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => safeJsonParse('qp_current_user', null));
+  const [categories, setCategories] = useState<Category[]>(() => safeJsonParse('qp_categories', INITIAL_CATEGORIES));
+  const [products, setProducts] = useState<Product[]>(() => safeJsonParse('qp_products', INITIAL_PRODUCTS));
+  const [banners, setBanners] = useState<PromoBanner[]>(() => safeJsonParse('qp_banners', INITIAL_BANNERS));
+  const [partners, setPartners] = useState<DeliveryPartner[]>(() => safeJsonParse('qp_partners', INITIAL_PARTNERS));
+  const [coupons, setCoupons] = useState<Coupon[]>(() => safeJsonParse('qp_coupons', INITIAL_COUPONS));
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(() => safeJsonParse('qp_payment_settings', INITIAL_PAYMENT_SETTINGS));
+  const [addresses, setAddresses] = useState<DeliveryAddress[]>(() => safeJsonParse('qp_addresses', INITIAL_ADDRESSES));
 
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
-    const saved = localStorage.getItem('qp_current_user');
-    return saved ? JSON.parse(saved) : null;
+  const [selectedAddress, setSelectedAddress] = useState<DeliveryAddress>(() => {
+    const savedAddrs = safeJsonParse('qp_addresses', INITIAL_ADDRESSES);
+    return savedAddrs[0] || INITIAL_ADDRESSES[0];
   });
-
-  const [categories, setCategories] = useState<Category[]>(() => {
-    const saved = localStorage.getItem('qp_categories');
-    return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
-  });
-
-  const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem('qp_products');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-  });
-
-  const [banners, setBanners] = useState<PromoBanner[]>(() => {
-    const saved = localStorage.getItem('qp_banners');
-    return saved ? JSON.parse(saved) : INITIAL_BANNERS;
-  });
-
-  const [partners, setPartners] = useState<DeliveryPartner[]>(() => {
-    const saved = localStorage.getItem('qp_partners');
-    return saved ? JSON.parse(saved) : INITIAL_PARTNERS;
-  });
-
-  const [coupons, setCoupons] = useState<Coupon[]>(() => {
-    const saved = localStorage.getItem('qp_coupons');
-    return saved ? JSON.parse(saved) : INITIAL_COUPONS;
-  });
-
-  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(() => {
-    const saved = localStorage.getItem('qp_payment_settings');
-    return saved ? JSON.parse(saved) : INITIAL_PAYMENT_SETTINGS;
-  });
-
-  const [addresses, setAddresses] = useState<DeliveryAddress[]>(() => {
-    const saved = localStorage.getItem('qp_addresses');
-    return saved ? JSON.parse(saved) : INITIAL_ADDRESSES;
-  });
-
-  const [selectedAddress, setSelectedAddress] = useState<DeliveryAddress>(addresses[0] || INITIAL_ADDRESSES[0]);
 
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem('qp_cart');
-    return saved ? JSON.parse(saved) : [];
+    const raw = safeJsonParse('qp_cart', []);
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+      item => item && item.product && typeof item.product === 'object' && item.product.id && typeof item.quantity === 'number'
+    );
   });
-
-  const [wishlistProductIds, setWishlistProductIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('qp_wishlist');
-    return saved ? JSON.parse(saved) : [];
-  });
-
+  const [wishlistProductIds, setWishlistProductIds] = useState<string[]>(() => safeJsonParse('qp_wishlist', []));
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
 
-  const [faqs, setFaqs] = useState<FAQItem[]>(() => {
-    const saved = localStorage.getItem('qp_faqs');
-    return saved ? JSON.parse(saved) : INITIAL_FAQS;
-  });
-
-  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(() => {
-    const saved = localStorage.getItem('qp_tickets');
-    return saved ? JSON.parse(saved) : INITIAL_SUPPORT_TICKETS;
-  });
-
-  const [servicePincodes, setServicePincodes] = useState<ServicePincode[]>(() => {
-    const saved = localStorage.getItem('qp_service_pincodes');
-    return saved ? JSON.parse(saved) : INITIAL_SERVICE_PINCODES;
-  });
-
+  const [faqs, setFaqs] = useState<FAQItem[]>(() => safeJsonParse('qp_faqs', INITIAL_FAQS));
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(() => safeJsonParse('qp_tickets', INITIAL_SUPPORT_TICKETS));
+  const [servicePincodes, setServicePincodes] = useState<ServicePincode[]>(() => safeJsonParse('qp_service_pincodes', INITIAL_SERVICE_PINCODES));
 
   // Default initial orders
-  const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('qp_orders');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [orders, setOrders] = useState<Order[]>(() => safeJsonParse('qp_orders', []));
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    const saved = localStorage.getItem('qp_notifications');
-    if (saved) return JSON.parse(saved);
-    return [
+    const defaultNotif: AppNotification[] = [
       {
         id: 'notif-1',
         targetRole: 'all',
@@ -282,22 +233,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         type: 'system'
       }
     ];
+    return safeJsonParse('qp_notifications', defaultNotif);
   });
 
-  // Persist state to localStorage
-  useEffect(() => { localStorage.setItem('qp_users', JSON.stringify(users)); }, [users]);
-  useEffect(() => { localStorage.setItem('qp_current_user', JSON.stringify(currentUser)); }, [currentUser]);
-  useEffect(() => { localStorage.setItem('qp_categories', JSON.stringify(categories)); }, [categories]);
-  useEffect(() => { localStorage.setItem('qp_products', JSON.stringify(products)); }, [products]);
-  useEffect(() => { localStorage.setItem('qp_banners', JSON.stringify(banners)); }, [banners]);
-  useEffect(() => { localStorage.setItem('qp_partners', JSON.stringify(partners)); }, [partners]);
-  useEffect(() => { localStorage.setItem('qp_coupons', JSON.stringify(coupons)); }, [coupons]);
-  useEffect(() => { localStorage.setItem('qp_payment_settings', JSON.stringify(paymentSettings)); }, [paymentSettings]);
-  useEffect(() => { localStorage.setItem('qp_addresses', JSON.stringify(addresses)); }, [addresses]);
-  useEffect(() => { localStorage.setItem('qp_cart', JSON.stringify(cartItems)); }, [cartItems]);
-  useEffect(() => { localStorage.setItem('qp_wishlist', JSON.stringify(wishlistProductIds)); }, [wishlistProductIds]);
-  useEffect(() => { localStorage.setItem('qp_orders', JSON.stringify(orders)); }, [orders]);
-  useEffect(() => { localStorage.setItem('qp_notifications', JSON.stringify(notifications)); }, [notifications]);
+  // Persist state safely to localStorage without throwing QuotaExceededError
+  useEffect(() => { safeLocalStorageSet('qp_users', users); }, [users]);
+  useEffect(() => { safeLocalStorageSet('qp_current_user', currentUser); }, [currentUser]);
+  useEffect(() => { safeLocalStorageSet('qp_categories', categories); }, [categories]);
+  useEffect(() => { safeLocalStorageSet('qp_products', products); }, [products]);
+  useEffect(() => { safeLocalStorageSet('qp_banners', banners); }, [banners]);
+  useEffect(() => { safeLocalStorageSet('qp_partners', partners); }, [partners]);
+  useEffect(() => { safeLocalStorageSet('qp_coupons', coupons); }, [coupons]);
+  useEffect(() => { safeLocalStorageSet('qp_payment_settings', paymentSettings); }, [paymentSettings]);
+  useEffect(() => { safeLocalStorageSet('qp_addresses', addresses); }, [addresses]);
+  useEffect(() => { safeLocalStorageSet('qp_cart', cartItems); }, [cartItems]);
+  useEffect(() => { safeLocalStorageSet('qp_wishlist', wishlistProductIds); }, [wishlistProductIds]);
+  useEffect(() => { safeLocalStorageSet('qp_orders', orders); }, [orders]);
+  useEffect(() => { safeLocalStorageSet('qp_notifications', notifications); }, [notifications]);
 
   const syncOrdersFromRemote = useCallback((remoteOrders: Order[]) => {
     setOrders(prev => {
@@ -311,7 +263,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   }, []);
 
-  // Real-time Firestore products subscription with initial catalog auto-seeding
+  // Real-time Firestore products subscription with initial catalog auto-seeding & defensive sanitization
   useEffect(() => {
     if (!db) return;
     const unsub = onSnapshot(collection(db, 'products'), async (snapshot) => {
@@ -327,9 +279,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       } else {
         const remoteProducts: Product[] = [];
         snapshot.forEach(docSnap => {
-          remoteProducts.push({ id: docSnap.id, ...docSnap.data() } as Product);
+          const d = docSnap.data();
+          const pPrice = Number(d?.price) || 0;
+          const pOrigPrice = Number(d?.originalPrice) || pPrice;
+          const pStock = typeof d?.stock === 'number' ? d.stock : (Number(d?.stock) || 0);
+          const pDelivery = Number(d?.deliveryTimeMins) || 10;
+          const pImg = d?.image || (Array.isArray(d?.images) && d.images[0]) || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80';
+          const pImgs = Array.isArray(d?.images) && d.images.length > 0 ? d.images : [pImg];
+
+          remoteProducts.push({
+            id: docSnap.id,
+            name: d?.name || 'Product',
+            category: d?.category || 'cat-kitchen',
+            price: pPrice,
+            originalPrice: pOrigPrice,
+            weightUnit: d?.weightUnit || '1 unit',
+            imageEmoji: d?.imageEmoji || '📦',
+            image: pImg,
+            images: pImgs,
+            stock: pStock,
+            isOutOfStock: !!d?.isOutOfStock,
+            isHidden: !!d?.isHidden,
+            rating: Number(d?.rating) || 5.0,
+            reviewsCount: Number(d?.reviewsCount) || 1,
+            description: d?.description || '',
+            isFeatured: !!d?.isFeatured,
+            deliveryTimeMins: pDelivery
+          });
         });
-        setProducts(remoteProducts);
+        if (remoteProducts.length > 0) {
+          setProducts(remoteProducts);
+        }
       }
     }, (err) => {
       console.warn('[AppContext onSnapshot products] Notice:', err);
@@ -500,22 +480,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       syncOrdersFromRemote(remoteOrders);
     }, async (err) => {
-      console.error("[AppContext onSnapshot orders] Error details:", {
-        code: err.code,
-        message: err.message,
-        name: err.name,
-        timestamp: new Date().toISOString(),
-        authUid: auth.currentUser?.uid || 'unauthenticated'
-      });
+      console.warn("[AppContext onSnapshot orders] Sync notice:", err?.message || err);
 
       if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
-        console.warn("[AppContext] Permission denied or unauthenticated. Attempting token refresh...");
         if (auth.currentUser) {
           try {
             await auth.currentUser.getIdToken(true);
-            console.log("[AppContext] Auth ID token refreshed successfully.");
           } catch (refreshErr) {
-            console.error("[AppContext] Failed to refresh auth token:", refreshErr);
+            console.warn("[AppContext] Token refresh attempt notice:", refreshErr);
           }
         }
       }
@@ -523,9 +495,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     return () => unsub();
   }, [syncOrdersFromRemote]);
-  useEffect(() => { localStorage.setItem('qp_faqs', JSON.stringify(faqs)); }, [faqs]);
-  useEffect(() => { localStorage.setItem('qp_tickets', JSON.stringify(supportTickets)); }, [supportTickets]);
-  useEffect(() => { localStorage.setItem('qp_service_pincodes', JSON.stringify(servicePincodes)); }, [servicePincodes]);
+  useEffect(() => { safeLocalStorageSet('qp_faqs', faqs); }, [faqs]);
+  useEffect(() => { safeLocalStorageSet('qp_tickets', supportTickets); }, [supportTickets]);
+  useEffect(() => { safeLocalStorageSet('qp_service_pincodes', servicePincodes); }, [servicePincodes]);
 
   // PIN Code Verification Helpers
   const isPincodeApproved = (pincode: string): boolean => {
@@ -603,7 +575,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setThemeMode(prev => prev === 'light' ? 'dark' : 'light');
   };
 
-  const isDeliveryPartnerUser = currentUser && (currentUser.role === 'partner' || currentUser.role === 'delivery_partner');
+  const isDeliveryPartnerUser = currentUser && currentUser.role === 'partner';
 
   const currentUserPartner = isDeliveryPartnerUser
     ? (
@@ -658,7 +630,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               setCurrentRole('customer');
             } else {
               setCurrentUser(userData);
-              if (currentRole === 'customer' || currentRole === userData.role) {
+              const { mode: activePortal } = getDetectedPortalMode();
+              if (activePortal === 'customer') {
+                setCurrentRole('customer');
+              } else if (currentRole === 'customer' || currentRole === userData.role) {
                 setCurrentRole(userData.role);
               }
             }
@@ -843,7 +818,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
 
       setCurrentUser(userData);
-      setCurrentRole(userData.role);
+      const { mode: activePortal } = getDetectedPortalMode();
+      if (activePortal === 'customer') {
+        setCurrentRole('customer');
+      } else {
+        setCurrentRole(userData.role);
+      }
 
       return {
         success: true,
@@ -898,7 +878,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
 
           setCurrentUser(matchedDoc);
-          setCurrentRole(matchedDoc.role);
+          const { mode: activePortal } = getDetectedPortalMode();
+          if (activePortal === 'customer') {
+            setCurrentRole('customer');
+          } else {
+            setCurrentRole(matchedDoc.role);
+          }
           return {
             success: true,
             message: `Welcome back, ${matchedDoc.name}! Authenticated as ${matchedDoc.role.toUpperCase()}.`,
@@ -1040,7 +1025,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
 
       setCurrentUser(userData);
-      setCurrentRole(userData.role);
+      const { mode: activePortal } = getDetectedPortalMode();
+      if (activePortal === 'customer') {
+        setCurrentRole('customer');
+      } else {
+        setCurrentRole(userData.role);
+      }
 
       return {
         success: true,
@@ -1394,36 +1384,48 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCurrentRole('customer');
   };
 
-  // Cart operations
+  // Cart operations with full defensive validation
   const addToCart = (product: Product, qty: number = 1) => {
-    if (product.isOutOfStock) return;
+    if (!product || !product.id || product.isOutOfStock) return;
     setCartItems(prev => {
-      const existing = prev.find(item => item.product.id === product.id);
+      const safePrev = Array.isArray(prev)
+        ? prev.filter(item => item && item.product && typeof item.product === 'object' && item.product.id)
+        : [];
+      const existing = safePrev.find(item => item.product.id === product.id);
       if (existing) {
-        return prev.map(item =>
+        return safePrev.map(item =>
           item.product.id === product.id
-            ? { ...item, quantity: item.quantity + qty }
+            ? { ...item, product, quantity: (item.quantity || 0) + qty }
             : item
         );
       }
-      return [...prev, { product, quantity: qty }];
+      return [...safePrev, { product, quantity: qty }];
     });
   };
 
   const removeFromCart = (productId: string) => {
-    setCartItems(prev => prev.filter(item => item.product.id !== productId));
+    if (!productId) return;
+    setCartItems(prev =>
+      Array.isArray(prev)
+        ? prev.filter(item => item && item.product && item.product.id && item.product.id !== productId)
+        : []
+    );
   };
 
   const updateQuantity = (productId: string, qty: number) => {
+    if (!productId) return;
     if (qty <= 0) {
       removeFromCart(productId);
       return;
     }
-    setCartItems(prev =>
-      prev.map(item =>
+    setCartItems(prev => {
+      const safePrev = Array.isArray(prev)
+        ? prev.filter(item => item && item.product && typeof item.product === 'object' && item.product.id)
+        : [];
+      return safePrev.map(item =>
         item.product.id === productId ? { ...item, quantity: qty } : item
-      )
-    );
+      );
+    });
   };
 
   const clearCart = () => {
@@ -1431,8 +1433,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAppliedCoupon(null);
   };
 
-  const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
-  const cartSubtotal = cartItems.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
+  const cartCount = Array.isArray(cartItems)
+    ? cartItems.reduce((acc, item) => acc + (item?.quantity || 0), 0)
+    : 0;
+
+  const cartSubtotal = Array.isArray(cartItems)
+    ? cartItems.reduce((acc, item) => {
+        const itemPrice = Number(item?.product?.price) || 0;
+        const itemQty = Number(item?.quantity) || 0;
+        return acc + (itemPrice * itemQty);
+      }, 0)
+    : 0;
 
   // Wishlist
   const toggleWishlist = (productId: string) => {
@@ -2214,13 +2225,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
-  // Inventory & Management functions
+  // Inventory & Management functions with strict field normalization
   const addProduct = (prodData: Omit<Product, 'id'>) => {
+    const pPrice = Number(prodData.price) || 0;
+    const pOrigPrice = Number(prodData.originalPrice) || pPrice;
+    const pStock = typeof prodData.stock === 'number' ? prodData.stock : (Number(prodData.stock) || 0);
+    const pDelivery = Number(prodData.deliveryTimeMins) || 10;
+    const finalImage = prodData.image || (prodData.images && prodData.images[0]) || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80';
+    const finalImages = prodData.images && prodData.images.length > 0 ? prodData.images : [finalImage];
+
     const newProd: Product = {
       ...prodData,
-      id: 'prod-' + Date.now()
+      id: 'prod-' + Date.now(),
+      name: prodData.name || 'New Product',
+      category: prodData.category || 'cat-kitchen',
+      price: pPrice,
+      originalPrice: pOrigPrice,
+      weightUnit: prodData.weightUnit || '1 unit',
+      imageEmoji: prodData.imageEmoji || '📦',
+      image: finalImage,
+      images: finalImages,
+      stock: pStock,
+      isOutOfStock: !!prodData.isOutOfStock,
+      isHidden: !!prodData.isHidden,
+      rating: Number(prodData.rating) || 5.0,
+      reviewsCount: Number(prodData.reviewsCount) || 1,
+      description: prodData.description || '',
+      isFeatured: !!prodData.isFeatured,
+      deliveryTimeMins: pDelivery
     };
-    setProducts(prev => [newProd, ...prev]);
+
+    setProducts(prev => [newProd, ...prev.filter(p => p.id !== newProd.id)]);
     if (db) {
       setDoc(doc(db, 'products', newProd.id), newProd).catch(e => console.warn('Firestore addProduct error:', e));
     }
@@ -2233,9 +2268,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateProduct = (updated: Product) => {
-    setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
+    const pPrice = Number(updated.price) || 0;
+    const pOrigPrice = Number(updated.originalPrice) || pPrice;
+    const pStock = typeof updated.stock === 'number' ? updated.stock : (Number(updated.stock) || 0);
+    const pDelivery = Number(updated.deliveryTimeMins) || 10;
+    const finalImage = updated.image || (updated.images && updated.images[0]) || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80';
+    const finalImages = updated.images && updated.images.length > 0 ? updated.images : [finalImage];
+
+    const normalized: Product = {
+      ...updated,
+      price: pPrice,
+      originalPrice: pOrigPrice,
+      stock: pStock,
+      deliveryTimeMins: pDelivery,
+      image: finalImage,
+      images: finalImages,
+      rating: Number(updated.rating) || 5.0,
+      reviewsCount: Number(updated.reviewsCount) || 1
+    };
+
+    setProducts(prev => prev.map(p => p.id === normalized.id ? normalized : p));
+    // Also update any matching product inside cartItems to prevent stale data
+    setCartItems(prev =>
+      Array.isArray(prev)
+        ? prev.map(item =>
+            item.product.id === normalized.id
+              ? { ...item, product: normalized }
+              : item
+          )
+        : []
+    );
+
     if (db) {
-      setDoc(doc(db, 'products', updated.id), updated).catch(e => console.warn('Firestore updateProduct error:', e));
+      setDoc(doc(db, 'products', normalized.id), normalized).catch(e => console.warn('Firestore updateProduct error:', e));
     }
   };
 
