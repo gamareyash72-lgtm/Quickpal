@@ -318,7 +318,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
 
           {errorMsg && (
-            errorMsg.includes('unauthorized-domain') || errorMsg.includes('Domain') ? (
+            errorMsg.includes('unauthorized-domain') || errorMsg.includes('auth/unauthorized-domain') ? (
               <div className="p-4 bg-amber-50 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 rounded-2xl text-amber-900 dark:text-amber-200 text-xs space-y-2.5 shadow-sm">
                 <div className="flex items-center gap-2 font-black text-amber-900 dark:text-amber-200 text-sm">
                   <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -345,13 +345,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </button>
                 </div>
                 <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-normal">
-                  👉 Go to <strong>Firebase Console &gt; Authentication &gt; Settings &gt; Authorized domains</strong> for project <strong>quickpal-new</strong>. Email/Password & Demo accounts work immediately below!
+                  👉 Go to <strong>Firebase Console &gt; Authentication &gt; Settings &gt; Authorized domains</strong>.
                 </p>
               </div>
             ) : (
               <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-2xl text-rose-700 dark:text-rose-300 text-xs font-bold flex items-start gap-2.5">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                <p className="flex-1">{errorMsg}</p>
+                <div className="flex-1 space-y-1">
+                  <p>{errorMsg}</p>
+                </div>
               </div>
             )
           )}

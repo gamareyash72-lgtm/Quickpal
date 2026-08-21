@@ -1,12 +1,12 @@
 {
-  "projectId": "ardent-dialect-mt3g1",
-  "appId": "1:63336497930:web:686caadcc6a9c44efff0f3",
-  "apiKey": "AIzaSyAEh_cK5PcVlCiexIW5500sIADgkxJheKI",
-  "authDomain": "ardent-dialect-mt3g1.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-remixquickpal-b24fc85c-2809-4f8c-a05d-a3adcb28750d",
-  "storageBucket": "ardent-dialect-mt3g1.firebasestorage.app",
-  "messagingSenderId": "63336497930",
-  "measurementId": "",
-  "oAuthClientId": "63336497930-oatu2r40a9ujeakuqqd261ro6klqe8r1.apps.googleusercontent.com",
+  "projectId": "quickpal-new",
+  "appId": "1:22011928007:web:e4a2142955fbaf6eaf0de2",
+  "apiKey": "AIzaSyB2nMD9yBHGC3zEEu84Scd8kLbi_c-xA6I",
+  "authDomain": "quickpal-new.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "quickpal-new.firebasestorage.app",
+  "messagingSenderId": "22011928007",
+  "measurementId": "G-8EGP5NZ3QR",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

@@ -684,6 +684,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return () => unsubscribe();
   }, []);
 
+  // Helper to check master owner email
+  const isMasterOwnerEmail = (e?: string): boolean => {
+    if (!e) return false;
+    const clean = e.trim().toLowerCase();
+    return clean === 'gamareyash72@gmail.com' || clean === 'owner@quickpal.in' || clean === 'owner@quickpal.com' || clean.startsWith('admin@quickpal');
+  };
+
   // User Authentication Handlers
   const loginUser = async (identifier: string, role: UserRole, password?: string, _otp?: string) => {
     const cleanEmail = identifier.trim().toLowerCase();
@@ -726,11 +733,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       let userData: AppUser;
 
       if (!userSnap.exists()) {
+        const assignedRole = (isMasterOwnerEmail(fbEmail) && role === 'owner') ? 'owner' : role;
         userData = {
           id: uid,
-          name: fbEmail.split('@')[0] || (role === 'customer' ? 'Customer' : role.toUpperCase()),
+          name: fbEmail.split('@')[0] || (assignedRole === 'customer' ? 'Customer' : assignedRole.toUpperCase()),
           email: fbEmail,
-          role: role,
+          role: assignedRole,
           status: 'ACTIVE',
           isActive: true,
           createdAt: new Date().toISOString()
@@ -742,6 +750,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       } else {
         userData = userSnap.data() as AppUser;
+      }
+
+      // Auto-elevate master owner email if logging into owner portal
+      if (isMasterOwnerEmail(fbEmail) && (role === 'owner' || role === 'admin')) {
+        if (userData.role !== 'owner') {
+          userData.role = 'owner';
+          try {
+            await updateDoc(userDocRef, { role: 'owner' });
+          } catch (e) {
+            console.warn("Firestore owner elevation notice:", e);
+          }
+        }
       }
 
       // Verify user account status
@@ -934,11 +954,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       let userData: AppUser;
       if (!userSnap || !userSnap.exists()) {
+        const assignedRole = (isMasterOwnerEmail(email) && requestedRole === 'owner') ? 'owner' : requestedRole;
         userData = {
           id: uid,
-          name: fbUser.displayName || email.split('@')[0] || requestedRole.toUpperCase(),
+          name: fbUser.displayName || email.split('@')[0] || assignedRole.toUpperCase(),
           email: email,
-          role: requestedRole,
+          role: assignedRole,
           status: 'ACTIVE',
           isActive: true,
           createdAt: new Date().toISOString()
@@ -950,6 +971,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       } else {
         userData = userSnap.data() as AppUser;
+      }
+
+      // Auto-elevate master owner email on Google login to owner dashboard
+      if (isMasterOwnerEmail(email) && (requestedRole === 'owner' || requestedRole === 'admin')) {
+        if (userData.role !== 'owner') {
+          userData.role = 'owner';
+          try {
+            await updateDoc(userDocRef, { role: 'owner' });
+          } catch (e) {
+            console.warn("Firestore role elevation notice:", e);
+          }
+        }
       }
 
       if (userData.status === 'INACTIVE' || userData.status === 'SUSPENDED') {
@@ -1049,11 +1082,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       let msg = err.message || "Google sign in failed.";
       if (errorCode === 'auth/popup-closed-by-user') {
         msg = 'Sign-in popup was closed before completing authentication.';
+      } else if (errorCode === 'auth/popup-blocked') {
+        msg = 'Sign-in popup was blocked by your browser. Please allow popups for this site.';
       } else if (errorCode === 'auth/operation-not-allowed') {
-        msg = 'Google Sign-In is disabled in Firebase Console. Please enable "Google" under Firebase Auth -> Sign-in method.';
+        msg = 'Google Sign-In is disabled in Firebase Console. Please go to Firebase Console -> Authentication -> Sign-in method -> Enable "Google".';
       } else if (errorCode === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
         const domain = typeof window !== 'undefined' ? window.location.hostname : '';
-        msg = `Domain '${domain}' is not authorized in Firebase Console for project 'quickpal-new'. Please add '${domain}' under Firebase Console -> Authentication -> Settings -> Authorized domains.`;
+        msg = `auth/unauthorized-domain: Domain '${domain}' is not authorized in Firebase Console.`;
+      } else {
+        msg = `[${errorCode}] ${err.message || 'Google authentication failed.'}`;
       }
       return {
         success: false,
