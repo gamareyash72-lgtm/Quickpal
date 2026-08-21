@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Orange Gradient -->
+    <linearGradient id="qp-orange" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF5200" />
+      <stop offset="50%" stop-color="#FF7A00" />
+      <stop offset="100%" stop-color="#FFA200" />
+    </linearGradient>
+
+    <!-- Green Gradient -->
+    <linearGradient id="qp-green" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00A859" />
+      <stop offset="60%" stop-color="#008043" />
+      <stop offset="100%" stop-color="#005B2E" />
+    </linearGradient>
+
+    <!-- Lightning Blue Gradient -->
+    <linearGradient id="qp-blue" x1="0%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#14418B" />
+      <stop offset="100%" stop-color="#081B4E" />
+    </linearGradient>
+
+    <!-- Soft Drop Shadow -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.12" />
+    </filter>
+  </defs>
+
+  <!-- Background container for high contrast favicon tab -->
+  <rect width="512" height="512" rx="110" fill="#FFFFFF" />
+
+  <g transform="translate(0, 0)" filter="url(#shadow)">
+    <!-- Orange Swoosh (Top & Left Ribbon) -->
+    <path
+      d="M 170 105 
+         C 215 75, 305 75, 355 110
+         C 388 135, 405 170, 400 205
+         C 396 230, 380 248, 360 252
+         C 365 200, 340 148, 290 132
+         C 230 112, 175 140, 142 195
+         C 125 225, 122 260, 130 295
+         C 122 265, 128 200, 170 105 Z"
+      fill="url(#qp-orange)"
+    />
+
+    <!-- Green Swoosh & Q Tail (Right & Bottom Curve) -->
+    <path
+      d="M 330 140
+         C 375 165, 402 215, 395 270
+         C 385 340, 325 390, 250 395
+         C 285 365, 335 340, 350 280
+         C 358 245, 345 200, 315 170
+         C 330 155, 322 145, 330 140 Z"
+      fill="url(#qp-green)"
+    />
+
+    <!-- Green Q-Tail extension swoop -->
+    <path
+      d="M 215 375
+         C 260 380, 305 345, 340 310
+         C 375 275, 405 330, 365 375
+         C 320 425, 235 405, 175 350
+         C 210 355, 255 355, 295 330
+         C 270 360, 240 372, 215 375 Z"
+      fill="url(#qp-green)"
+    />
+
+    <!-- Left lower green accent -->
+    <path
+      d="M 125 255
+         C 130 310, 175 365, 230 385
+         C 170 375, 135 325, 130 270
+         C 126 240, 125 250, 125 255 Z"
+      fill="url(#qp-green)"
+    />
+
+    <!-- Electric Lightning Bolt (Center) -->
+    <polygon
+      points="278,75 210,230 282,230 200,380 325,200 252,200 330,75"
+      fill="url(#qp-blue)"
+    />
+  </g>
+</svg>

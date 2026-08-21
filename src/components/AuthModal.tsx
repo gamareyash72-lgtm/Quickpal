@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';
 import { getDetectedPortalMode } from '../utils/portalConfig';
+import { QuickPalEmblem } from './QuickPalLogo';
 import {
   X,
   User,
@@ -220,39 +221,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Modal Header */}
         <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-yellow-600 text-white p-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md text-white flex items-center justify-center font-black shadow-md text-xl">
-              {isCustomerPortal || portalType === 'customer'
-                ? '🛒'
-                : detectedMode === 'partner'
-                ? '🛵'
-                : detectedMode === 'admin'
-                ? '🛡️'
-                : detectedMode === 'owner'
-                ? '👑'
-                : '🔐'}
+            <div className="w-11 h-11 rounded-2xl bg-white text-gray-900 flex items-center justify-center p-1.5 shadow-md shrink-0 border border-white/40">
+              <QuickPalEmblem size={30} />
             </div>
             <div>
               <h2 className="text-lg font-black tracking-tight">
                 {isCustomerPortal || portalType === 'customer'
-                  ? 'Customer Account & Login'
+                  ? 'QuickPal Customer Account'
                   : detectedMode === 'partner'
-                  ? 'Rider Fleet Partner Login'
+                  ? 'QuickPal Rider Partner Login'
                   : detectedMode === 'admin'
-                  ? 'Admin & Store Operations Portal'
+                  ? 'QuickPal Admin Console'
                   : detectedMode === 'owner'
-                  ? 'Store Owner Business Suite'
-                  : 'Operations & Staff Portal'}
+                  ? 'QuickPal Owner Business Suite'
+                  : 'QuickPal Operations Portal'}
               </h2>
               <p className="text-xs text-orange-100 font-medium">
                 {isCustomerPortal || portalType === 'customer'
-                  ? 'Sign in or create an account for 10-min grocery delivery'
+                  ? 'Sign in for 10-minute instant delivery in Saphale (401102)'
                   : detectedMode === 'partner'
                   ? 'Sign in to access assigned delivery orders and route navigation'
                   : detectedMode === 'admin'
                   ? 'Authorized login for dispatch, stock control, and catalog management'
                   : detectedMode === 'owner'
                   ? 'Secure authentication for revenue analytics and management'
-                  : 'Authorized personnel login for Admin, Store & Delivery'}
+                  : 'Authorized personnel login for QuickPal team'}
               </p>
             </div>
           </div>
@@ -673,35 +666,43 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </p>
               </div>
 
-              {/* Staff Role Selector Tabs */}
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2 block">
-                  Select Target Portal Role:
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                  {staffRolesConfig.map(r => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => setStaffRole(r.id)}
-                      className={`py-2 px-2 rounded-xl text-xs font-extrabold flex flex-col items-center gap-1 transition-all border ${
-                        staffRole === r.id
-                          ? 'bg-orange-500 text-white border-orange-600 shadow-md scale-102'
-                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-orange-50 dark:hover:bg-orange-950/30'
-                      }`}
-                    >
-                      {r.icon}
-                      <span className="text-[11px] truncate">{r.label}</span>
-                    </button>
-                  ))}
+              {/* Staff Role Selector Tabs: ONLY shown in unified mode */}
+              {!isStandaloneStaff && (
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2 block">
+                    Select Target Portal Role:
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {staffRolesConfig.map(r => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => setStaffRole(r.id)}
+                        className={`py-2 px-2 rounded-xl text-xs font-extrabold flex flex-col items-center gap-1 transition-all border ${
+                          staffRole === r.id
+                            ? 'bg-orange-500 text-white border-orange-600 shadow-md scale-102'
+                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-orange-50 dark:hover:bg-orange-950/30'
+                        }`}
+                      >
+                        {r.icon}
+                        <span className="text-[11px] truncate">{r.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Staff Login Form */}
               <form onSubmit={handleStaffLogin} className="space-y-3">
                 <div>
                   <label className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300 block mb-1">
-                    Staff Registered Email / Username
+                    {staffRole === 'partner'
+                      ? 'Rider Registered Mobile / Email'
+                      : staffRole === 'admin'
+                      ? 'Admin Registered Email / Username'
+                      : staffRole === 'owner'
+                      ? 'Owner Registered Email / Username'
+                      : 'Staff Registered Email / Username'}
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
@@ -718,7 +719,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <div>
                   <label className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300 block mb-1">
-                    Staff Portal Password
+                    {staffRole === 'partner'
+                      ? 'Rider Security PIN / Password'
+                      : staffRole === 'admin'
+                      ? 'Admin Portal Password'
+                      : staffRole === 'owner'
+                      ? 'Owner Suite Password'
+                      : 'Staff Portal Password'}
                   </label>
                   <div className="relative">
                     <KeyRound className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
@@ -736,9 +743,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-black text-xs rounded-2xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2 mt-2"
+                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs rounded-2xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2 mt-2"
                 >
-                  {isSubmitting ? 'Authenticating Staff...' : `Login to ${staffRole.toUpperCase()} Portal`} <ArrowRight className="w-4 h-4" />
+                  {isSubmitting
+                    ? 'Authenticating...'
+                    : staffRole === 'partner'
+                    ? 'Login to Rider Fleet Portal'
+                    : staffRole === 'admin'
+                    ? 'Login to Admin Console'
+                    : staffRole === 'owner'
+                    ? 'Login to Owner Business Suite'
+                    : `Login to ${staffRole.toUpperCase()} Portal`} <ArrowRight className="w-4 h-4" />
                 </button>
 
                 <div className="relative my-3">

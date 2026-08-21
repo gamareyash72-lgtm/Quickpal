@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { AddAddressModal } from './AddAddressModal';
+import { QuickPalEmblem } from './QuickPalLogo';
 import {
   Search,
   MapPin,
@@ -116,11 +117,11 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fbbf24_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
 
         <div className="flex items-center justify-between w-full md:w-auto gap-4 relative z-10">
-          {/* QuickPal Branding Logo with Subtle Festive Floral Touch */}
+          {/* QuickPal Branding Logo with Official Emblem */}
           <div className="flex items-center gap-2.5">
-            {/* Elegant Diya / Lotus Icon Container */}
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-amber-50 flex items-center justify-center shadow-md shrink-0 border border-amber-300/40">
-              <span className="text-base select-none" title="गणेशोत्सव विशेष">🌺</span>
+            {/* Official QuickPal Electric Emblem */}
+            <div className="w-9 h-9 rounded-2xl bg-white dark:bg-gray-900 flex items-center justify-center shadow-md shrink-0 border border-amber-300/40 p-1">
+              <QuickPalEmblem size={28} />
             </div>
 
             <div className="flex flex-col cursor-pointer select-none" onClick={() => setSearchQuery('')}>

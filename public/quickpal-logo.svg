@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 650" width="100%" height="100%">
+  <defs>
+    <linearGradient id="q-orange-full" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF5200" />
+      <stop offset="50%" stop-color="#FF7A00" />
+      <stop offset="100%" stop-color="#FFA200" />
+    </linearGradient>
+
+    <linearGradient id="q-green-full" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00A859" />
+      <stop offset="60%" stop-color="#008043" />
+      <stop offset="100%" stop-color="#005B2E" />
+    </linearGradient>
+
+    <linearGradient id="q-blue-full" x1="0%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#14418B" />
+      <stop offset="100%" stop-color="#081B4E" />
+    </linearGradient>
+
+    <filter id="logo-drop" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.08" />
+    </filter>
+  </defs>
+
+  <g transform="translate(44, 10)" filter="url(#logo-drop)">
+    <!-- Orange Swoosh -->
+    <path
+      d="M 170 105 
+         C 215 75, 305 75, 355 110
+         C 388 135, 405 170, 400 205
+         C 396 230, 380 248, 360 252
+         C 365 200, 340 148, 290 132
+         C 230 112, 175 140, 142 195
+         C 125 225, 122 260, 130 295
+         C 122 265, 128 200, 170 105 Z"
+      fill="url(#q-orange-full)"
+    />
+
+    <!-- Green Swoosh -->
+    <path
+      d="M 330 140
+         C 375 165, 402 215, 395 270
+         C 385 340, 325 390, 250 395
+         C 285 365, 335 340, 350 280
+         C 358 245, 345 200, 315 170
+         C 330 155, 322 145, 330 140 Z"
+      fill="url(#q-green-full)"
+    />
+
+    <!-- Green Tail -->
+    <path
+      d="M 215 375
+         C 260 380, 305 345, 340 310
+         C 375 275, 405 330, 365 375
+         C 320 425, 235 405, 175 350
+         C 210 355, 255 355, 295 330
+         C 270 360, 240 372, 215 375 Z"
+      fill="url(#q-green-full)"
+    />
+
+    <!-- Lower Green -->
+    <path
+      d="M 125 255
+         C 130 310, 175 365, 230 385
+         C 170 375, 135 325, 130 270
+         C 126 240, 125 250, 125 255 Z"
+      fill="url(#q-green-full)"
+    />
+
+    <!-- Lightning Bolt -->
+    <polygon
+      points="278,75 210,230 282,230 200,380 325,200 252,200 330,75"
+      fill="url(#q-blue-full)"
+    />
+  </g>
+
+  <!-- Typography: QuickPal -->
+  <text
+    x="300"
+    y="515"
+    font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    font-size="68"
+    font-weight="900"
+    letter-spacing="-1.5"
+    fill="#0D2357"
+    text-anchor="middle"
+  >QuickPal</text>
+
+  <!-- Subtitle: — Fast Delivery at Your Doorstep — -->
+  <text
+    x="300"
+    y="560"
+    font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    font-size="18"
+    font-weight="700"
+    font-style="italic"
+    letter-spacing="0.5"
+    fill="#1B3A70"
+    text-anchor="middle"
+  >— Fast Delivery at Your Doorstep —</text>
+</svg>

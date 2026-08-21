@@ -121,6 +121,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
   // Orders Tab Filter State
   const [orderFilter, setOrderFilter] = useState<'all' | 'placed' | 'store_accepted' | 'in_transit' | 'delivered' | 'cancelled'>('all');
 
+  // Products Tab Filter & Search State for 200+ products
+  const [productSearch, setProductSearch] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState<string>('all');
+  const [productStockFilter, setProductStockFilter] = useState<'all' | 'in_stock' | 'out_of_stock' | 'hidden'>('all');
+
   // FAQ Modal state
   const [showFaqModal, setShowFaqModal] = useState(false);
   const [editingFaq, setEditingFaq] = useState<FAQItem | null>(null);
@@ -549,120 +554,189 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
       </div>
 
       {/* Tab 1: Products Management */}
-      {adminTab === 'products' && (
-        <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200">
-              Inventory & Products ({products.length})
-            </h3>
-            <button
-              onClick={() => {
-                setEditingProduct(null);
-                setShowProductModal(true);
-              }}
-              className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm"
-            >
-              <Plus className="w-4 h-4" /> Add New Product
-            </button>
-          </div>
+      {adminTab === 'products' && (() => {
+        const filteredProds = products.filter(prod => {
+          const matchesSearch = !productSearch.trim() || 
+            prod.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+            prod.description?.toLowerCase().includes(productSearch.toLowerCase());
+          const matchesCat = productCategoryFilter === 'all' || prod.category === productCategoryFilter;
+          const matchesStock = 
+            productStockFilter === 'all' ? true :
+            productStockFilter === 'in_stock' ? !prod.isOutOfStock && !prod.isHidden :
+            productStockFilter === 'out_of_stock' ? prod.isOutOfStock :
+            productStockFilter === 'hidden' ? prod.isHidden : true;
+          return matchesSearch && matchesCat && matchesStock;
+        });
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-400 uppercase font-black">
-                  <th className="py-2.5 px-3">Item</th>
-                  <th className="py-2.5 px-3">Category</th>
-                  <th className="py-2.5 px-3">Price</th>
-                  <th className="py-2.5 px-3">Stock</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-medium">
-                {products.map(prod => {
-                  const mainPhoto = prod.image || (prod.images && prod.images[0]);
-                  return (
-                    <tr key={prod.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
-                      <td className="py-3 px-3 flex items-center gap-2.5">
-                        <div className="w-10 h-10 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 border border-gray-200 dark:border-gray-700 shrink-0 flex items-center justify-center overflow-hidden">
-                          {mainPhoto ? (
-                            <img
-                              src={mainPhoto}
-                              alt={prod.name}
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-contain"
-                            />
-                          ) : (
-                            <span className="text-lg">{prod.imageEmoji || '📦'}</span>
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-bold">{prod.name}</p>
-                          <div className="flex items-center gap-2 text-[10px] text-gray-400 font-medium">
-                            <span>{prod.weightUnit}</span>
-                            {prod.images && prod.images.length > 1 && (
-                              <span className="bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 px-1.5 py-0.2 rounded font-black">
-                                {prod.images.length} Photos
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 capitalize">
-                        {categories.find(c => c.id === prod.category)?.name || prod.category}
-                      </td>
-                      <td className="py-3 px-3 font-bold">
-                        ₹{prod.price}{' '}
-                        <span className="text-[10px] text-gray-400 line-through">
-                          ₹{prod.originalPrice}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 font-bold">{prod.stock} units</td>
-                      <td className="py-3 px-3">
-                        <button
-                          onClick={() => toggleOutOfStock(prod.id)}
-                          className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                            prod.isOutOfStock
-                              ? 'bg-rose-100 text-rose-800'
-                              : 'bg-orange-100 text-orange-800'
-                          }`}
-                        >
-                          {prod.isOutOfStock ? 'Out Of Stock' : 'In Stock'}
-                        </button>
-                      </td>
-                      <td className="py-3 px-3 text-right space-x-1">
-                        <button
-                          onClick={() => toggleHideProduct(prod.id)}
-                          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500"
-                          title={prod.isHidden ? 'Show Product' : 'Hide Product'}
-                        >
-                          {prod.isHidden ? (
-                            <EyeOff className="w-4 h-4 text-rose-500" />
-                          ) : (
-                            <Eye className="w-4 h-4 text-orange-600" />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => handleOpenEditProduct(prod)}
-                          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-blue-600"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => deleteProduct(prod.id)}
-                          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-rose-600"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+        return (
+          <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200">
+                  Inventory & Products ({products.length} Listed)
+                </h3>
+                <p className="text-[11px] text-gray-400 font-medium">
+                  Cloud Firestore synced. Supports 200+ to 1000+ items catalog.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingProduct(null);
+                  setShowProductModal(true);
+                }}
+                className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm shrink-0"
+              >
+                <Plus className="w-4 h-4" /> Add New Product
+              </button>
+            </div>
+
+            {/* Quick Search & Filters Bar for Fast Navigation across 200+ products */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-gray-50 dark:bg-gray-800/40 p-2.5 rounded-2xl border border-gray-100 dark:border-gray-800">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  placeholder="🔍 Search product name..."
+                  className="w-full text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <select
+                  value={productCategoryFilter}
+                  onChange={(e) => setProductCategoryFilter(e.target.value)}
+                  className="w-full text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-orange-500 font-semibold"
+                >
+                  <option value="all">📁 All Categories ({categories.length})</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <select
+                  value={productStockFilter}
+                  onChange={(e) => setProductStockFilter(e.target.value as any)}
+                  className="w-full text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-orange-500 font-semibold"
+                >
+                  <option value="all">📦 All Stock Status</option>
+                  <option value="in_stock">✅ In Stock</option>
+                  <option value="out_of_stock">⚠️ Out of Stock</option>
+                  <option value="hidden">👁️ Hidden Items</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-400 uppercase font-black">
+                    <th className="py-2.5 px-3">Item</th>
+                    <th className="py-2.5 px-3">Category</th>
+                    <th className="py-2.5 px-3">Price</th>
+                    <th className="py-2.5 px-3">Stock</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-medium">
+                  {filteredProds.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-gray-400">
+                        No products match your search/filter.
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredProds.map(prod => {
+                      const mainPhoto = prod.image || (prod.images && prod.images[0]);
+                      return (
+                        <tr key={prod.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
+                          <td className="py-3 px-3 flex items-center gap-2.5">
+                            <div className="w-10 h-10 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 border border-gray-200 dark:border-gray-700 shrink-0 flex items-center justify-center overflow-hidden">
+                              {mainPhoto ? (
+                                <img
+                                  src={mainPhoto}
+                                  alt={prod.name}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-contain"
+                                />
+                              ) : (
+                                <span className="text-lg">{prod.imageEmoji || '📦'}</span>
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-bold">{prod.name}</p>
+                              <div className="flex items-center gap-2 text-[10px] text-gray-400 font-medium">
+                                <span>{prod.weightUnit}</span>
+                                {prod.images && prod.images.length > 1 && (
+                                  <span className="bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 px-1.5 py-0.2 rounded font-black">
+                                    {prod.images.length} Photos
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 capitalize">
+                            {categories.find(c => c.id === prod.category)?.name || prod.category}
+                          </td>
+                          <td className="py-3 px-3 font-bold">
+                            ₹{prod.price}{' '}
+                            <span className="text-[10px] text-gray-400 line-through">
+                              ₹{prod.originalPrice}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-bold">{prod.stock} units</td>
+                          <td className="py-3 px-3">
+                            <button
+                              onClick={() => toggleOutOfStock(prod.id)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                prod.isOutOfStock
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-orange-100 text-orange-800'
+                              }`}
+                            >
+                              {prod.isOutOfStock ? 'Out Of Stock' : 'In Stock'}
+                            </button>
+                          </td>
+                          <td className="py-3 px-3 text-right space-x-1">
+                            <button
+                              onClick={() => toggleHideProduct(prod.id)}
+                              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500"
+                              title={prod.isHidden ? 'Show Product' : 'Hide Product'}
+                            >
+                              {prod.isHidden ? (
+                                <EyeOff className="w-4 h-4 text-rose-500" />
+                              ) : (
+                                <Eye className="w-4 h-4 text-orange-600" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleOpenEditProduct(prod)}
+                              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-blue-600"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteProduct(prod.id)}
+                              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-rose-600"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Tab 2: Category Management */}
       {adminTab === 'categories' && (

@@ -183,7 +183,13 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentRole, setCurrentRole] = useState<UserRole>('customer');
+  const { mode: initialDetectedMode, isLockedStandalone: initialIsLocked } = getDetectedPortalMode();
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
+    if (initialIsLocked && initialDetectedMode !== 'unified') {
+      return initialDetectedMode as UserRole;
+    }
+    return 'customer';
+  });
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>('partner-1');
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
 
