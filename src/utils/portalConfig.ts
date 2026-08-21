@@ -117,18 +117,52 @@ export function getDetectedPortalMode(): { mode: PortalMode; isLockedStandalone:
     return { mode: 'customer', isLockedStandalone: true };
   }
 
-  // 4. Check Subdomain (e.g. partner.quickpal.in, admin.quickpal.in, owner.quickpal.in)
+  // 4. Check Hostname / Domain (e.g. quickpal-rider.vercel.app, rider.quickpal.in, quickpal-admin.vercel.app, quickpal-owner.vercel.app, quickpal-customer.vercel.app)
   const hostname = window.location.hostname.toLowerCase();
-  if (hostname.startsWith('partner.') || hostname.startsWith('rider.') || hostname.includes('rider-') || hostname.includes('partner-')) {
+  
+  if (
+    hostname.includes('rider') || 
+    hostname.includes('partner') || 
+    hostname.startsWith('rider.') || 
+    hostname.startsWith('partner.')
+  ) {
     return { mode: 'partner', isLockedStandalone: true };
   }
-  if (hostname.startsWith('admin.') || hostname.includes('admin-')) {
+  
+  if (
+    hostname.includes('admin') || 
+    hostname.startsWith('admin.')
+  ) {
     return { mode: 'admin', isLockedStandalone: true };
   }
-  if (hostname.startsWith('owner.') || hostname.includes('owner-')) {
+  
+  if (
+    hostname.includes('owner') || 
+    hostname.startsWith('owner.')
+  ) {
     return { mode: 'owner', isLockedStandalone: true };
   }
-  if (hostname.startsWith('customer.') || hostname.startsWith('store.') || hostname.includes('customer-')) {
+
+  if (
+    hostname.includes('store-staff') ||
+    hostname.startsWith('store.') ||
+    hostname.includes('quickpal-store')
+  ) {
+    return { mode: 'admin', isLockedStandalone: true };
+  }
+  
+  if (
+    hostname.includes('customer') || 
+    hostname.startsWith('customer.') || 
+    hostname.startsWith('shop.') ||
+    hostname.startsWith('app.') ||
+    hostname === 'quickpal.in' ||
+    hostname === 'www.quickpal.in' ||
+    hostname.endsWith('quickpal.in') ||
+    hostname === 'quickpal.vercel.app' ||
+    hostname.includes('quickpal-customer') ||
+    hostname.includes('quickpal-storefront')
+  ) {
     return { mode: 'customer', isLockedStandalone: true };
   }
 

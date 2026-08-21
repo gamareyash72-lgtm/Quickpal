@@ -90,16 +90,18 @@ function AppContent() {
         }}
       />
 
-      {/* Main App Header */}
-      <Header
-        onOpenCart={() => setIsCartOpen(true)}
-        onOpenNotifications={() => setIsNotificationsOpen(true)}
-        onOpenWishlist={() => setIsWishlistOpen(true)}
-        onOpenOrders={() => setIsOrderHistoryOpen(true)}
-        onOpenAuth={() => handleOpenAuth('customer')}
-        onOpenAiAssistant={() => setIsAiAssistantOpen(true)}
-        onOpenFaqDashboard={() => setCustomerMainView(prev => prev === 'faqs' ? 'store' : 'faqs')}
-      />
+      {/* Main App Header - ONLY shown in customer storefront */}
+      {currentRole === 'customer' && (
+        <Header
+          onOpenCart={() => setIsCartOpen(true)}
+          onOpenNotifications={() => setIsNotificationsOpen(true)}
+          onOpenWishlist={() => setIsWishlistOpen(true)}
+          onOpenOrders={() => setIsOrderHistoryOpen(true)}
+          onOpenAuth={() => handleOpenAuth('customer')}
+          onOpenAiAssistant={() => setIsAiAssistantOpen(true)}
+          onOpenFaqDashboard={() => setCustomerMainView(prev => prev === 'faqs' ? 'store' : 'faqs')}
+        />
+      )}
 
       {/* Main App Navigation Bar for Customer View Switch */}
       {currentRole === 'customer' && (
@@ -156,46 +158,53 @@ function AppContent() {
           )
         )}
 
-        {/* Staff Role Access Control Protection */}
+        {/* Staff Role Access Control & Sign-In Screen */}
         {isStaffRoleRequested && !isAuthorizedForRequestedRole() && (
-          <div className="flex-1 flex items-center justify-center p-6 bg-gray-50 dark:bg-gray-950">
-            <div className="max-w-md w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-8 text-center shadow-xl space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-red-100 dark:bg-red-950/80 text-red-600 dark:text-red-400 mx-auto flex items-center justify-center font-black text-2xl">
-                🚫
+          <div className="flex-1 flex items-center justify-center p-6 bg-gradient-to-br from-gray-900 via-stone-900 to-black text-white">
+            <div className="max-w-md w-full bg-gray-900/90 border border-amber-500/30 rounded-3xl p-8 text-center shadow-2xl space-y-5 backdrop-blur-md">
+              <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 mx-auto flex items-center justify-center font-black text-3xl shadow-inner">
+                {currentRole === 'partner' ? '🛵' : currentRole === 'admin' ? '🛡️' : currentRole === 'owner' ? '👑' : '🏬'}
               </div>
-              <h2 className="text-xl font-black text-gray-900 dark:text-gray-100">
-                Access Denied
-              </h2>
-              <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed font-medium">
+              <div>
+                <h2 className="text-xl font-black text-white tracking-tight">
+                  {currentRole === 'partner'
+                    ? 'QuickPal Rider Fleet Portal'
+                    : currentRole === 'admin'
+                    ? 'QuickPal Admin Console'
+                    : currentRole === 'owner'
+                    ? 'QuickPal Owner Operations'
+                    : 'QuickPal Store Operations'}
+                </h2>
+                <p className="text-xs text-amber-300 font-bold mt-1">
+                  Saphale (401102) Hyperlocal Network
+                </p>
+              </div>
+              <p className="text-xs text-gray-300 leading-relaxed font-medium">
                 {currentUser ? (
-                  currentUser.role === 'owner' && currentRole === 'partner' ? (
-                    <span className="text-sm font-bold text-red-600 dark:text-red-400">
-                      This account is registered as OWNER. Please use the Owner Portal.
-                    </span>
-                  ) : (
-                    <>
-                      Your account is registered as <strong>{currentUser.role?.toUpperCase() || 'UNKNOWN'}</strong>. You are strictly prohibited from accessing the <strong>{currentRole.toUpperCase()} Dashboard</strong>.
-                    </>
-                  )
+                  <>
+                    Logged in as <strong>{currentUser.name}</strong> ({currentUser.role?.toUpperCase()}). You do not have permission for the <strong>{currentRole.toUpperCase()}</strong> portal.
+                  </>
                 ) : (
                   <>
-                    The <strong>{currentRole.toUpperCase()} Dashboard</strong> is restricted to authorized company personnel. Self-registration for staff roles is disabled.
+                    Please sign in with your registered <strong>{currentRole.toUpperCase()}</strong> staff credentials to manage orders, live dispatch, and shift status.
                   </>
                 )}
               </p>
-              <div className="pt-2 flex flex-col gap-2">
+              <div className="pt-2 flex flex-col gap-2.5">
                 <button
                   onClick={() => handleOpenAuth(currentRole)}
-                  className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-black text-xs rounded-2xl shadow-lg transition-transform active:scale-95"
+                  className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-stone-950 font-black text-xs rounded-2xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"
                 >
-                  Sign In with Staff Account
+                  🔑 Sign In as {currentRole === 'partner' ? 'Delivery Partner' : currentRole === 'admin' ? 'Administrator' : currentRole === 'owner' ? 'Store Owner' : 'Store Staff'}
                 </button>
-                <button
-                  onClick={() => setCurrentRole('customer')}
-                  className="w-full py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs rounded-2xl transition-colors"
-                >
-                  Return to Storefront
-                </button>
+                {!isLockedStandalone && (
+                  <button
+                    onClick={() => setCurrentRole('customer')}
+                    className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold text-xs rounded-2xl transition-colors"
+                  >
+                    Go to Customer Storefront
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -212,63 +221,65 @@ function AppContent() {
         )}
       </main>
 
-      {/* Footer Navigation & Brand Footer */}
-      <footer className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 px-4 sm:px-8 py-2.5 flex items-center justify-between shrink-0 shadow-lg z-30">
-        <div className="flex items-center gap-6 sm:gap-8">
-          <div
-            onClick={() => setSelectedCategoryId(null)}
-            className="flex flex-col items-center gap-0.5 cursor-pointer text-emerald-600 dark:text-emerald-400 hover:scale-105 transition-transform"
-          >
-            <Home className="w-5 h-5" />
-            <span className="text-[10px] font-bold">Home</span>
-          </div>
-
-          <div
-            onClick={() => {
-              setSelectedCategoryId(null);
-            }}
-            className="flex flex-col items-center gap-0.5 cursor-pointer text-gray-400 hover:text-emerald-600 transition-colors"
-          >
-            <Grid className="w-5 h-5" />
-            <span className="text-[10px] font-bold">Categories</span>
-          </div>
-
-          <div
-            onClick={() => setIsWishlistOpen(true)}
-            className="flex flex-col items-center gap-0.5 cursor-pointer text-gray-400 hover:text-emerald-600 transition-colors"
-          >
-            <Heart className="w-5 h-5" />
-            <span className="text-[10px] font-bold">Wishlist</span>
-          </div>
-        </div>
-
-        <div className="flex gap-4 items-center">
-          <button
-            onClick={() => setIsAiAssistantOpen(true)}
-            className="text-xs text-orange-600 dark:text-orange-400 font-bold italic hover:underline hidden sm:block"
-          >
-            🤖 24/7 AI Customer Support
-          </button>
-          <div className="h-6 w-px bg-gray-200 dark:bg-gray-800 hidden sm:block"></div>
-          <span className="text-xs font-bold text-gray-700 dark:text-gray-300 hidden sm:block">
-            Download App:
-          </span>
-          <div className="flex gap-1.5">
+      {/* Footer Navigation & Brand Footer - ONLY for Customer View */}
+      {currentRole === 'customer' && (
+        <footer className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 px-4 sm:px-8 py-2.5 flex items-center justify-between shrink-0 shadow-lg z-30">
+          <div className="flex items-center gap-6 sm:gap-8">
             <div
-              className="w-7 h-7 bg-gray-800 text-white rounded-lg flex items-center justify-center text-xs shadow cursor-pointer hover:bg-gray-700"
-              title="iOS App Store"
+              onClick={() => setSelectedCategoryId(null)}
+              className="flex flex-col items-center gap-0.5 cursor-pointer text-emerald-600 dark:text-emerald-400 hover:scale-105 transition-transform"
             >
-              🍎
+              <Home className="w-5 h-5" />
+              <span className="text-[10px] font-bold">Home</span>
             </div>
+
             <div
-              className="w-7 h-7 bg-gray-800 text-white rounded-lg flex items-center justify-center text-xs shadow cursor-pointer hover:bg-gray-700"
-              title="Android Play Store"
+              onClick={() => {
+                setSelectedCategoryId(null);
+              }}
+              className="flex flex-col items-center gap-0.5 cursor-pointer text-gray-400 hover:text-emerald-600 transition-colors"
             >
-              ▶
+              <Grid className="w-5 h-5" />
+              <span className="text-[10px] font-bold">Categories</span>
+            </div>
+
+            <div
+              onClick={() => setIsWishlistOpen(true)}
+              className="flex flex-col items-center gap-0.5 cursor-pointer text-gray-400 hover:text-emerald-600 transition-colors"
+            >
+              <Heart className="w-5 h-5" />
+              <span className="text-[10px] font-bold">Wishlist</span>
             </div>
           </div>
-        </div>
-      </footer>
+
+          <div className="flex gap-4 items-center">
+            <button
+              onClick={() => setIsAiAssistantOpen(true)}
+              className="text-xs text-orange-600 dark:text-orange-400 font-bold italic hover:underline hidden sm:block"
+            >
+              🤖 24/7 AI Customer Support
+            </button>
+            <div className="h-6 w-px bg-gray-200 dark:bg-gray-800 hidden sm:block"></div>
+            <span className="text-xs font-bold text-gray-700 dark:text-gray-300 hidden sm:block">
+              Download App:
+            </span>
+            <div className="flex gap-1.5">
+              <div
+                className="w-7 h-7 bg-gray-800 text-white rounded-lg flex items-center justify-center text-xs shadow cursor-pointer hover:bg-gray-700"
+                title="iOS App Store"
+              >
+                🍎
+              </div>
+              <div
+                className="w-7 h-7 bg-gray-800 text-white rounded-lg flex items-center justify-center text-xs shadow cursor-pointer hover:bg-gray-700"
+                title="Android Play Store"
+              >
+                ▶
+              </div>
+            </div>
+          </div>
+        </footer>
+      )}
 
       {/* Global Modals & Drawers */}
       <CartDrawer

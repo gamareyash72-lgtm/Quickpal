@@ -80,6 +80,18 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth, onOpenDeploymentGu
           <span className="hidden md:inline text-amber-300/90 text-[11px] font-semibold">
             Welcome, {currentUser.name}! 🚀 10-Min Delivery in Saphale
           </span>
+        ) : detectedMode === 'partner' ? (
+          <span className="hidden md:inline text-amber-300 font-bold text-[11px]">
+            🛵 Rider Fleet & Delivery Partner Portal (401102)
+          </span>
+        ) : detectedMode === 'admin' ? (
+          <span className="hidden md:inline text-amber-300 font-bold text-[11px]">
+            🛡️ Admin Dispatch & Inventory Operations (401102)
+          </span>
+        ) : detectedMode === 'owner' ? (
+          <span className="hidden md:inline text-amber-300 font-bold text-[11px]">
+            👑 Owner Business Suite & P&L Analytics (401102)
+          </span>
         ) : (
           <span className="hidden md:inline text-stone-400 text-[11px] font-semibold">
             Fresh Modaks & Puja Samagri in 10 Mins • Hyperlocal Saphale
@@ -91,17 +103,19 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth, onOpenDeploymentGu
         {/* If Staff Authenticated in non-customer portal: Render Authorized Portal Tabs */}
         {!isCustomerPortal && isStaffAuthenticated && authorizedRoles.length > 0 && (
           <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700">
-            <button
-              onClick={() => setCurrentRole('customer')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-bold transition-all text-[11px] ${
-                currentRole === 'customer'
-                  ? 'bg-orange-500 text-white shadow-md'
-                  : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
-              }`}
-            >
-              <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Storefront View</span>
-            </button>
+            {!isLockedStandalone && (
+              <button
+                onClick={() => setCurrentRole('customer')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-bold transition-all text-[11px] ${
+                  currentRole === 'customer'
+                    ? 'bg-orange-500 text-white shadow-md'
+                    : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
+                }`}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Storefront View</span>
+              </button>
+            )}
 
             {authorizedRoles.map(r => (
               <button
@@ -125,7 +139,9 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth, onOpenDeploymentGu
           <button
             onClick={() => {
               logoutUser();
-              setCurrentRole('customer');
+              if (!isLockedStandalone) {
+                setCurrentRole('customer');
+              }
             }}
             className="p-1.5 rounded-lg bg-rose-900/60 hover:bg-rose-800 text-rose-200 border border-rose-700/50 transition-colors flex items-center gap-1 text-[11px] font-bold"
             title="Sign Out Staff Account"

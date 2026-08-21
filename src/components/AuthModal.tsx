@@ -43,13 +43,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   } = useApp();
 
   const { mode: detectedMode } = getDetectedPortalMode();
-  const isCustomerPortal = detectedMode === 'customer' || defaultRole === 'customer';
+  const isCustomerPortal = detectedMode === 'customer';
+  const isStandaloneStaff = detectedMode === 'partner' || detectedMode === 'admin' || detectedMode === 'owner';
 
   const [portalType, setPortalType] = useState<'customer' | 'staff'>(
-    isCustomerPortal ? 'customer' : 'staff'
+    isCustomerPortal ? 'customer' : (isStandaloneStaff ? 'staff' : (defaultRole === 'customer' ? 'customer' : 'staff'))
   );
   const [staffRole, setStaffRole] = useState<UserRole>(
-    defaultRole !== 'customer' ? defaultRole : 'admin'
+    detectedMode !== 'customer' && detectedMode !== 'unified' 
+      ? (detectedMode as UserRole) 
+      : (defaultRole !== 'customer' ? defaultRole : 'admin')
   );
 
   const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgot'>('login');
@@ -218,15 +221,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-yellow-600 text-white p-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md text-white flex items-center justify-center font-black shadow-md text-xl">
-              {isCustomerPortal || portalType === 'customer' ? '🛒' : '🔐'}
+              {isCustomerPortal || portalType === 'customer'
+                ? '🛒'
+                : detectedMode === 'partner'
+                ? '🛵'
+                : detectedMode === 'admin'
+                ? '🛡️'
+                : detectedMode === 'owner'
+                ? '👑'
+                : '🔐'}
             </div>
             <div>
               <h2 className="text-lg font-black tracking-tight">
-                {isCustomerPortal || portalType === 'customer' ? 'Customer Account & Login' : 'Operations & Staff Portal'}
+                {isCustomerPortal || portalType === 'customer'
+                  ? 'Customer Account & Login'
+                  : detectedMode === 'partner'
+                  ? 'Rider Fleet Partner Login'
+                  : detectedMode === 'admin'
+                  ? 'Admin & Store Operations Portal'
+                  : detectedMode === 'owner'
+                  ? 'Store Owner Business Suite'
+                  : 'Operations & Staff Portal'}
               </h2>
               <p className="text-xs text-orange-100 font-medium">
                 {isCustomerPortal || portalType === 'customer'
                   ? 'Sign in or create an account for 10-min grocery delivery'
+                  : detectedMode === 'partner'
+                  ? 'Sign in to access assigned delivery orders and route navigation'
+                  : detectedMode === 'admin'
+                  ? 'Authorized login for dispatch, stock control, and catalog management'
+                  : detectedMode === 'owner'
+                  ? 'Secure authentication for revenue analytics and management'
                   : 'Authorized personnel login for Admin, Store & Delivery'}
               </p>
             </div>
@@ -260,8 +285,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Modal Body Container */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
-          {/* Main Portal Selector: ONLY shown on staff / non-customer portals */}
-          {!isCustomerPortal && (
+          {/* Main Portal Selector: ONLY shown on unified multi-portal view */}
+          {!isCustomerPortal && !isStandaloneStaff && (
             <div className="flex bg-gray-100 dark:bg-gray-800/80 p-1 rounded-2xl border border-gray-200 dark:border-gray-700">
               <button
                 type="button"
@@ -741,21 +766,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </button>
               </form>
 
-              {/* Return to Customer Login */}
-              <div className="pt-2 border-t border-gray-100 dark:border-gray-800 text-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPortalType('customer');
-                    setAuthMode('login');
-                    setErrorMsg('');
-                    setSuccessMsg('');
-                  }}
-                  className="text-xs font-bold text-gray-500 hover:text-orange-600 dark:hover:text-orange-400 transition-colors inline-flex items-center gap-1.5"
-                >
-                  ← Return to Customer Grocery Login
-                </button>
-              </div>
+              {/* Return to Customer Login - ONLY in unified mode */}
+              {!isStandaloneStaff && (
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-800 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPortalType('customer');
+                      setAuthMode('login');
+                      setErrorMsg('');
+                      setSuccessMsg('');
+                    }}
+                    className="text-xs font-bold text-gray-500 hover:text-orange-600 dark:hover:text-orange-400 transition-colors inline-flex items-center gap-1.5"
+                  >
+                    ← Return to Customer Grocery Login
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
