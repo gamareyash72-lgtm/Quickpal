@@ -151,28 +151,17 @@ export const INITIAL_PAYMENT_SETTINGS: PaymentSettings = {
 
 export const INITIAL_ADDRESSES: DeliveryAddress[] = [
   {
-    id: 'addr-1',
+    id: 'addr-default',
     label: 'Home',
-    addressLine: 'Station Road, Near Railway Station',
+    addressLine: 'Station Road',
     area: 'Saphale East',
     city: 'Palghar',
     pincode: '401102',
-    landmark: 'Opposite Bus Stand',
+    landmark: 'Near Railway Station',
     isDefault: true,
     latitude: 19.5785,
     longitude: 72.8220
-  },
-  {
-    id: 'addr-2',
-    label: 'Work',
-    addressLine: 'Market Yard, Main Bazaar',
-    area: 'Saphale West',
-    city: 'Palghar',
-    pincode: '401102',
-    landmark: 'Near Gram Panchayat',
-    latitude: 19.5802,
-    longitude: 72.8195
-  },
+  }
 ];
 
 export const INITIAL_FAQS: FAQItem[] = [
@@ -242,25 +231,5 @@ export const INITIAL_FAQS: FAQItem[] = [
   }
 ];
 
-export const INITIAL_SUPPORT_TICKETS: SupportTicket[] = [
-  {
-    id: 'tkt-101',
-    customerName: 'Aarav Sharma',
-    customerPhone: '+91 98765 43210',
-    subject: 'Delayed delivery query for Order #ORD-101',
-    message: 'My order was placed 12 mins ago, just wanted to confirm delivery estimate.',
-    status: 'resolved',
-    createdAt: '2026-07-30T10:30:00Z',
-    orderId: 'ORD-101'
-  },
-  {
-    id: 'tkt-102',
-    customerName: 'Priya Verma',
-    customerPhone: '+91 91234 56789',
-    subject: 'Request for organic spice category addition',
-    message: 'Can you please stock organic turmeric and whole black pepper?',
-    status: 'open',
-    createdAt: '2026-07-31T09:15:00Z'
-  }
-];
+export const INITIAL_SUPPORT_TICKETS: SupportTicket[] = [];
 

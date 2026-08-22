@@ -170,13 +170,13 @@ export const DeliveryPartnerDashboard: React.FC = () => {
 
   // Pending orders requiring partner acceptance in active service area pincode (default 401102)
   const pendingOrders = (orders || []).filter(o => {
-    const s = (o?.status || 'pending').toLowerCase().trim();
+    const s = (o?.status || 'placed').toLowerCase().trim();
     const isEligibleStatus = !s || s === 'pending' || s === 'placed' || s === 'store_accepted' || s === 'ready_for_delivery' || s === 'processing';
     const isUnassigned = !o?.deliveryPartnerId && !o?.assignedPartnerId;
     const notResponded = !(o?.partnerResponseLogs || []).some(l => l?.partnerId === partnerUid);
     const pin = (o?.deliveryPincode || (typeof o?.address === 'object' ? (o.address as any)?.pincode : '') || (typeof o?.deliveryAddress === 'string' && o.deliveryAddress.includes('401102') ? '401102' : '') || '401102').trim();
     const activeZone = (selectedZonePincode || activePartner?.pinCode || '401102').trim();
-    const isZoneMatch = !activeZone || !pin || pin === activeZone || pin === '401102' || activeZone === '401102';
+    const isZoneMatch = !activeZone || !pin || pin === activeZone || pin === '401102' || activeZone === '401102' || activeZone === 'all' || activeZone === '';
 
     return isEligibleStatus && isUnassigned && notResponded && isZoneMatch;
   });

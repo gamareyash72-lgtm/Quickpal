@@ -32,7 +32,9 @@ export const OwnerDashboard: React.FC = () => {
     currentUser
   } = useApp();
 
-  // Active view tab for Owner Control
+  const staffUsers = users.filter(u => u.role !== 'customer');
+  const customerUsers = users.filter(u => u.role === 'customer');
+
   const [activeTab, setActiveTab] = useState<
     'overview' | 'accounts' | 'products' | 'categories' | 'orders' | 'payment_audit' | 'partners' | 'coupons' | 'banners' | 'payments' | 'faqs' | 'tickets' | 'reports'
   >('overview');
@@ -40,7 +42,7 @@ export const OwnerDashboard: React.FC = () => {
   // Staff Provisioning Modal State
   const [showUserModal, setShowUserModal] = useState(false);
   const [staffSearchQuery, setStaffSearchQuery] = useState('');
-  const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'partner' | 'store' | 'admin' | 'owner'>('all');
+  const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'partner' | 'store' | 'admin' | 'owner' | 'customer'>('all');
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; role: string } | null>(null);
 
   const [userForm, setUserForm] = useState({
@@ -149,7 +151,7 @@ export const OwnerDashboard: React.FC = () => {
             <Users className="w-10 h-10" />
           </div>
           <span className="text-[10px] font-black uppercase text-gray-400 block">Total Staff Accounts</span>
-          <p className="text-2xl font-black text-purple-600 dark:text-purple-400 mt-1">{users.length}</p>
+          <p className="text-2xl font-black text-purple-600 dark:text-purple-400 mt-1">{staffUsers.length}</p>
           <span className="text-[10px] text-gray-500 font-medium">Admins, Store & Delivery Staff</span>
         </div>
 
@@ -183,8 +185,13 @@ export const OwnerDashboard: React.FC = () => {
               <h3 className="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-gray-100 flex items-center gap-2">
                 Staff ID & Role Management
                 <span className="bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-[10px] px-2 py-0.5 rounded-full font-extrabold">
-                  {users.length} Total Accounts
+                  {staffUsers.length} Staff Accounts
                 </span>
+                {customerUsers.length > 0 && (
+                  <span className="bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-[10px] px-2 py-0.5 rounded-full font-extrabold">
+                    {customerUsers.length} App Customers
+                  </span>
+                )}
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Provision new team members, manage credentials, or delete obsolete staff IDs directly.
@@ -217,17 +224,24 @@ export const OwnerDashboard: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
-            {(['all', 'partner', 'store', 'admin', 'owner'] as const).map(role => (
+            {[
+              { id: 'all', label: `All Staff (${staffUsers.length})` },
+              { id: 'partner', label: `Partner (${users.filter(u => u.role === 'partner').length})` },
+              { id: 'store', label: `Store (${users.filter(u => u.role === 'store').length})` },
+              { id: 'admin', label: `Admin (${users.filter(u => u.role === 'admin').length})` },
+              { id: 'owner', label: `Owner (${users.filter(u => u.role === 'owner').length})` },
+              { id: 'customer', label: `Customers (${customerUsers.length})` }
+            ].map(tab => (
               <button
-                key={role}
-                onClick={() => setStaffRoleFilter(role)}
+                key={tab.id}
+                onClick={() => setStaffRoleFilter(tab.id as any)}
                 className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black uppercase transition-all shrink-0 ${
-                  staffRoleFilter === role
+                  staffRoleFilter === tab.id
                     ? 'bg-purple-600 text-white shadow-xs'
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
               >
-                {role}
+                {tab.label}
               </button>
             ))}
           </div>
@@ -256,7 +270,13 @@ export const OwnerDashboard: React.FC = () => {
                     (u.username && u.username.toLowerCase().includes(q)) ||
                     (u.email && u.email.toLowerCase().includes(q)) ||
                     (u.phone && u.phone.includes(q));
-                  const matchesRole = staffRoleFilter === 'all' || u.role === staffRoleFilter;
+
+                  // 'all' shows all staff accounts, never mixing customers as staff
+                  const matchesRole =
+                    staffRoleFilter === 'all'
+                      ? u.role !== 'customer'
+                      : u.role === staffRoleFilter;
+
                   return matchesSearch && matchesRole;
                 })
                 .map(u => (
@@ -306,10 +326,10 @@ export const OwnerDashboard: React.FC = () => {
                       <button
                         onClick={() => setUserToDelete({ id: u.id, name: u.name, role: u.role })}
                         className="bg-rose-500 hover:bg-rose-600 text-white px-2.5 py-1 rounded-lg text-[10px] font-black shadow-xs transition-colors flex-inline items-center gap-1"
-                        title={`Delete Staff ID #${u.id}`}
+                        title={`Delete ${u.role === 'customer' ? 'Customer' : 'Staff'} Account #${u.id}`}
                       >
                         <Trash2 className="w-3 h-3 inline mr-1" />
-                        Delete Staff ID
+                        Delete {u.role === 'customer' ? 'User' : 'Staff ID'}
                       </button>
                     </td>
                   </tr>

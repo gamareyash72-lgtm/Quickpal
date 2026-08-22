@@ -259,13 +259,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const syncOrdersFromRemote = useCallback((remoteOrders: Order[]) => {
     setOrders(prev => {
-      const map = new Map<string, Order>();
-      prev.forEach(o => map.set(o.id, o));
+      if (!remoteOrders || remoteOrders.length === 0) {
+        // If remote has no orders yet in Firestore, keep only very fresh locally placed orders (< 60s old)
+        const recentLocal = prev.filter(o => o && o.createdAt && (Date.now() - new Date(o.createdAt).getTime() < 60000));
+        return recentLocal;
+      }
+      const remoteMap = new Map<string, Order>();
       remoteOrders.forEach(ro => {
-        const existing = map.get(ro.id);
-        map.set(ro.id, { ...existing, ...ro });
+        remoteMap.set(ro.id, ro);
       });
-      return Array.from(map.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      // Merge any freshly placed local order not yet emitted by snapshot
+      prev.forEach(lo => {
+        if (!remoteMap.has(lo.id) && lo && lo.createdAt && (Date.now() - new Date(lo.createdAt).getTime() < 60000)) {
+          remoteMap.set(lo.id, lo);
+        }
+      });
+      return Array.from(remoteMap.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     });
   }, []);
 
@@ -607,7 +616,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       )
     : null;
 
-  const activePartner = currentUserPartner || partners.find(p => p.id === selectedPartnerId) || partners[0];
+  const fallbackPartner: DeliveryPartner = {
+    id: 'dp-saphale-1',
+    name: currentUser?.name || 'QuickPal Partner',
+    phone: currentUser?.phone || '+91 932605337',
+    vehicleType: 'EV Bike',
+    vehicleNumber: 'MH-04-QP-4011',
+    isOnline: true,
+    totalEarnings: 0,
+    completedOrdersCount: 0,
+    rating: 5.0,
+    currentLocationName: 'Saphale East Express Hub',
+    pinCode: '401102'
+  };
+
+  const activePartner = currentUserPartner || partners.find(p => p.id === selectedPartnerId) || partners[0] || fallbackPartner;
 
   // Firebase Auth Observer to synchronize active authenticated user
   useEffect(() => {

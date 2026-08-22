@@ -39,7 +39,8 @@ import {
   CreditCard,
   Banknote,
   Upload,
-  Printer
+  Printer,
+  Search
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -138,6 +139,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
 
   // Account Creation Form State (Admin / Owner Provisioning)
   const [showUserModal, setShowUserModal] = useState(false);
+  const [accountRoleFilter, setAccountRoleFilter] = useState<'all' | 'partner' | 'store' | 'admin' | 'owner' | 'customer'>('all');
+  const [accountSearchQuery, setAccountSearchQuery] = useState('');
   const [userForm, setUserForm] = useState({
     name: '',
     role: 'partner' as UserRole,
@@ -862,8 +865,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
           <div className="space-y-3">
             {orders.filter(o => {
               if (orderFilter === 'all') return true;
-              if (orderFilter === 'in_transit') return ['accepted', 'picked_up', 'out_for_delivery'].includes(o.status);
-              return o.status === orderFilter;
+              const s = (o.status || '').toLowerCase();
+              if (orderFilter === 'placed') return s === 'placed' || s === 'pending';
+              if (orderFilter === 'store_accepted') return s === 'store_accepted';
+              if (orderFilter === 'in_transit') return ['accepted', 'partner_accepted', 'picked_up', 'out_for_delivery', 'ready_for_delivery'].includes(s);
+              if (orderFilter === 'delivered') return s === 'delivered';
+              if (orderFilter === 'cancelled') return s === 'cancelled' || s === 'rejected';
+              return s === orderFilter;
             }).length === 0 ? (
               <div className="p-10 text-center bg-gray-50 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-800 text-gray-400 font-bold text-xs space-y-2">
                 <p>🛒 No customer orders match filter '{orderFilter}'.</p>
@@ -873,8 +881,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
               orders
                 .filter(o => {
                   if (orderFilter === 'all') return true;
-                  if (orderFilter === 'in_transit') return ['accepted', 'picked_up', 'out_for_delivery'].includes(o.status);
-                  return o.status === orderFilter;
+                  const s = (o.status || '').toLowerCase();
+                  if (orderFilter === 'placed') return s === 'placed' || s === 'pending';
+                  if (orderFilter === 'store_accepted') return s === 'store_accepted';
+                  if (orderFilter === 'in_transit') return ['accepted', 'partner_accepted', 'picked_up', 'out_for_delivery', 'ready_for_delivery'].includes(s);
+                  if (orderFilter === 'delivered') return s === 'delivered';
+                  if (orderFilter === 'cancelled') return s === 'cancelled' || s === 'rejected';
+                  return s === orderFilter;
                 })
                 .map(ord => {
                   const safeLogs = Array.isArray(ord.partnerResponseLogs) ? ord.partnerResponseLogs : [];
@@ -1292,7 +1305,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
             <div>
               <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200 flex items-center gap-2">
                 <Users className="w-4 h-4 text-orange-500" />
-                Staff Accounts & Role Management ({users.length})
+                Staff Accounts & Role Management ({users.filter(u => u.role !== 'customer').length})
+                {users.filter(u => u.role === 'customer').length > 0 && (
+                  <span className="bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-[10px] px-2 py-0.5 rounded-full font-extrabold normal-case">
+                    +{users.filter(u => u.role === 'customer').length} App Customers
+                  </span>
+                )}
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Manage Delivery Partners, Store Users, and Admin credentials. Self-registration is strictly disabled for non-customers.
@@ -1304,6 +1322,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
             >
               <UserPlus className="w-4 h-4" /> Provision New Staff/Partner Account
             </button>
+          </div>
+
+          {/* Role Filter Tabs */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search staff by ID, name, email or phone..."
+                value={accountSearchQuery}
+                onChange={e => setAccountSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+              {[
+                { id: 'all', label: `All Staff (${users.filter(u => u.role !== 'customer').length})` },
+                { id: 'partner', label: `Partner (${users.filter(u => u.role === 'partner').length})` },
+                { id: 'store', label: `Store (${users.filter(u => u.role === 'store').length})` },
+                { id: 'admin', label: `Admin (${users.filter(u => u.role === 'admin').length})` },
+                { id: 'owner', label: `Owner (${users.filter(u => u.role === 'owner').length})` },
+                { id: 'customer', label: `Customers (${users.filter(u => u.role === 'customer').length})` }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setAccountRoleFilter(tab.id as any)}
+                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black uppercase transition-all shrink-0 ${
+                    accountRoleFilter === tab.id
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Access Policy Banner */}
@@ -1333,7 +1388,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {users.map(u => (
+                {users
+                  .filter(u => {
+                    const q = accountSearchQuery.toLowerCase();
+                    const matchesSearch =
+                      u.name.toLowerCase().includes(q) ||
+                      String(u.id).toLowerCase().includes(q) ||
+                      (u.username && u.username.toLowerCase().includes(q)) ||
+                      (u.email && u.email.toLowerCase().includes(q)) ||
+                      (u.phone && u.phone.includes(q));
+
+                    const matchesRole =
+                      accountRoleFilter === 'all'
+                        ? u.role !== 'customer'
+                        : u.role === accountRoleFilter;
+
+                    return matchesSearch && matchesRole;
+                  })
+                  .map(u => (
                   <tr key={u.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
                     <td className="py-3 px-3 font-mono text-[11px] font-bold text-orange-600 dark:text-orange-400">
                       #{u.id}

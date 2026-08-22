@@ -24,17 +24,22 @@ export const StoreStaffDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'pending' | 'accepted' | 'history'>('pending');
 
   // Orders waiting for store stock confirmation
-  const pendingOrders = orders.filter(o => o.status === 'placed');
+  const pendingOrders = orders.filter(o => {
+    const s = (o?.status || 'placed').toLowerCase().trim();
+    return s === 'placed' || s === 'pending' || !s;
+  });
 
   // Orders accepted by store, in progress
-  const activeAcceptedOrders = orders.filter(
-    o => o.status === 'store_accepted' || o.status === 'accepted' || o.status === 'picked_up' || o.status === 'out_for_delivery'
-  );
+  const activeAcceptedOrders = orders.filter(o => {
+    const s = (o?.status || '').toLowerCase().trim();
+    return s === 'store_accepted' || s === 'partner_accepted' || s === 'accepted' || s === 'picked_up' || s === 'out_for_delivery' || s === 'ready_for_delivery' || s === 'processing';
+  });
 
   // Completed/cancelled history
-  const historyOrders = orders.filter(
-    o => o.status === 'delivered' || o.status === 'cancelled' || o.status === 'rejected'
-  );
+  const historyOrders = orders.filter(o => {
+    const s = (o?.status || '').toLowerCase().trim();
+    return s === 'delivered' || s === 'cancelled' || s === 'rejected';
+  });
 
   const defaultStore = {
     name: 'QuickPal Saphale Central Mart',
