@@ -18,7 +18,7 @@ export const PORTAL_METADATA: Record<PortalMode, PortalMetadata> = {
     id: 'customer',
     name: 'QuickPal Express Grocery Store',
     shortName: 'Customer Store',
-    tagline: '10-Minute Grocery Delivery in Saphale',
+    tagline: '30-Minute Grocery Delivery in Saphale',
     icon: '🛒',
     recommendedDomain: 'quickpal.in (or customer.quickpal.in)',
     envVariableValue: 'VITE_PORTAL_MODE=customer',

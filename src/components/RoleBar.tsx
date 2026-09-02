@@ -78,7 +78,7 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth, onOpenDeploymentGu
           </div>
         ) : currentUser && currentUser.role === 'customer' ? (
           <span className="hidden md:inline text-amber-300/90 text-[11px] font-semibold">
-            Welcome, {currentUser.name}! 🚀 10-Min Delivery in Saphale
+            Welcome, {currentUser.name}! 🚀 30-Min Delivery in Saphale
           </span>
         ) : detectedMode === 'partner' ? (
           <span className="hidden md:inline text-amber-300 font-bold text-[11px]">
@@ -94,7 +94,7 @@ export const RoleBar: React.FC<RoleBarProps> = ({ onOpenAuth, onOpenDeploymentGu
           </span>
         ) : (
           <span className="hidden md:inline text-stone-400 text-[11px] font-semibold">
-            Fresh Modaks & Puja Samagri in 10 Mins • Hyperlocal Saphale
+            Fresh Modaks & Puja Samagri in 30 Mins • Hyperlocal Saphale
           </span>
         )}
       </div>

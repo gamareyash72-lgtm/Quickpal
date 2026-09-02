@@ -211,6 +211,9 @@ export interface PaymentSettings {
   checkoutNote?: string;
   customerCarePhone?: string;
   customerCareMasked?: boolean;
+  customerCareEmail?: string;
+  whatsappSupportUrl?: string;
+  instagramUrl?: string;
 }
 
 export interface FAQItem {
@@ -226,6 +229,7 @@ export interface SupportTicket {
   id: string;
   customerName: string;
   customerPhone?: string;
+  customerEmail?: string;
   subject: string;
   message: string;
   status: 'open' | 'in_progress' | 'resolved';
@@ -242,5 +246,26 @@ export interface ServicePincode {
   deliveryFee: number;
   minOrderValue: number;
   estimatedTimeMins: number;
+}
+
+export type EmailAlertType =
+  | 'LOW_STOCK'
+  | 'OUT_OF_STOCK'
+  | 'CUSTOMER_COMPLAINT'
+  | 'FRAUD_DETECTED'
+  | 'NEW_ORDER'
+  | 'SECURITY_ALERT'
+  | 'SYSTEM_TEST';
+
+export interface EmailAlertLog {
+  id: string;
+  type: EmailAlertType;
+  recipient: string;
+  subject: string;
+  content: string;
+  metadata?: Record<string, any>;
+  status: 'sent' | 'delivered' | 'failed';
+  timestamp: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
 }
 

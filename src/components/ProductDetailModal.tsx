@@ -219,7 +219,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-orange-600 shrink-0" />
-                <span>Super Fast 10-Min Doorstep Delivery</span>
+                <span>Super Fast 30-Min Doorstep Delivery</span>
               </div>
             </div>
           </div>

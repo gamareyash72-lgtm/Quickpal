@@ -764,7 +764,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">
-                  Delivery Charge (10 Mins Express)
+                  Delivery Charge (30 Mins Express)
                 </span>
                 <span className="font-bold">
                   {deliveryFee === 0 ? <span className="text-orange-600 font-extrabold">FREE</span> : `₹${deliveryFee}`}

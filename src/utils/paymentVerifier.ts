@@ -1,4 +1,5 @@
 import { Order, PaymentMethod } from '../types';
+import { triggerFraudAlertEmail } from './alertAutomation';
 
 export interface PaymentVerificationResult {
   isValid: boolean;
@@ -61,10 +62,16 @@ export function verifyPaymentDetails(
 
     // Explicitly reject web URLs, payment links, or external URLs pasted as UTRs
     if (rawInput.startsWith('http://') || rawInput.startsWith('https://') || rawInput.includes('www.') || rawInput.includes('.com') || rawInput.includes('.in') || rawInput.includes('.net')) {
+      const reason = 'Invalid Payment Proof: Pasting external URLs or web links is not accepted. Please enter the official 12-digit numeric UPI UTR / RRN from your GPay, PhonePe, or Paytm payment receipt.';
+      triggerFraudAlertEmail('External URL / Phishing Link Injected as UTR', {
+        utr: rawInput,
+        amount: submittedAmount,
+        reason
+      });
       return {
         isValid: false,
         status: 'failed',
-        failureReason: 'Invalid Payment Proof: Pasting external URLs or web links is not accepted. Please enter the official 12-digit numeric UPI UTR / RRN from your GPay, PhonePe, or Paytm payment receipt.',
+        failureReason: reason,
         auditNote: `Blocked URL Submission: Rejected URL string '${rawInput}'.`
       };
     }
@@ -92,10 +99,16 @@ export function verifyPaymentDetails(
       cleanDigits === '000000000000';
 
     if (isAllSameDigit || isSequentialFake) {
+      const reason = `Fraudulent / Dummy UTR Blocked: '${cleanDigits}' is a generic sequence and not a valid bank transaction ID.`;
+      triggerFraudAlertEmail('Generic / Dummy Sequential UTR Fraud', {
+        utr: cleanDigits,
+        amount: submittedAmount,
+        reason
+      });
       return {
         isValid: false,
         status: 'failed',
-        failureReason: `Fraudulent / Dummy UTR Blocked: '${cleanDigits}' is a generic sequence and not a valid bank transaction ID.`,
+        failureReason: reason,
         auditNote: `Blocked Fraud Attempt: Fake sequential/repeating UTR '${cleanDigits}'.`
       };
     }
@@ -105,10 +118,17 @@ export function verifyPaymentDetails(
       o => o.paymentStatus === 'paid' && o.paymentTransactionId && o.paymentTransactionId.includes(cleanDigits)
     );
     if (duplicateOrder) {
+      const reason = `Duplicate UTR Claim: '${cleanDigits}' was already verified and settled for Order #${duplicateOrder.id}. Re-using transaction references is strictly prohibited.`;
+      triggerFraudAlertEmail('Duplicate UTR Reuse Fraud Attempt', {
+        orderId: duplicateOrder.id,
+        utr: cleanDigits,
+        amount: submittedAmount,
+        reason
+      });
       return {
         isValid: false,
         status: 'failed',
-        failureReason: `Duplicate UTR Claim: '${cleanDigits}' was already verified and settled for Order #${duplicateOrder.id}. Re-using transaction references is strictly prohibited.`,
+        failureReason: reason,
         auditNote: `Blocked Duplicate UTR: Already claimed in Order #${duplicateOrder.id}.`
       };
     }
@@ -128,10 +148,16 @@ export function verifyPaymentDetails(
     const isAuthorizedUtr = AUTHORIZED_MERCHANT_UTRS.has(cleanDigits);
 
     if (!isAuthorizedUtr) {
+      const reason = `Bank Settlement Verification Failed: UTR '${cleanDigits}' was not found in the official payee account settlement ledger (qpstore@icici). Payment of ₹${orderTotal} was NOT received by the store bank.`;
+      triggerFraudAlertEmail('Unverified / Unsettled Bank UTR Submission', {
+        utr: cleanDigits,
+        amount: orderTotal,
+        reason
+      });
       return {
         isValid: false,
         status: 'failed',
-        failureReason: `Bank Settlement Verification Failed: UTR '${cleanDigits}' was not found in the official payee account settlement ledger (qpstore@icici). Payment of ₹${orderTotal} was NOT received by the store bank.`,
+        failureReason: reason,
         auditNote: `Unrecognized UTR: '${cleanDigits}' not present in store bank settlement ledger.`
       };
     }

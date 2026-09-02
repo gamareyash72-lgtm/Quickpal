@@ -220,10 +220,10 @@ export function printOrderReceipt(order: Order) {
       <div class="receipt-card">
         <!-- Header -->
         <div class="header">
-          <h1 class="brand-logo">⚡ QuickPal Express</h1>
-          <div class="tagline">10-Minute Hyperlocal Express Grocery Delivery</div>
+          <h1 class="brand-logo" style="color: #FF6A00; font-weight: 900; letter-spacing: -0.5px;"><span style="color: #1A1A1A;">quick</span><span style="color: #FF6A00;">pal</span></h1>
+          <div class="tagline" style="font-family: Georgia, serif; font-size: 12px; color: #374151; font-weight: 500;">Saphale&apos;s First Ever Online delivery at your doorstep</div>
           <div style="font-size: 11px; color: #4b5563; margin-top: 4px;">
-            ${order.storeInfo ? `${order.storeInfo.name} — ${order.storeInfo.area}, ${order.storeInfo.pincode}` : 'Dark Store #1 - Saphale & Palghar Express Distribution'}
+            ${order.storeInfo ? `${order.storeInfo.name} — ${order.storeInfo.area}, ${order.storeInfo.pincode}` : 'Dark Store #1 - Saphale Express Distribution (401102)'}
           </div>
         </div>
 
@@ -309,7 +309,7 @@ export function printOrderReceipt(order: Order) {
         <!-- Footer -->
         <div class="footer">
           <p style="font-weight: 800; color: #374151; margin-bottom: 4px;">Thank you for ordering with QuickPal Express! 🛒</p>
-          <p style="margin: 0;">For queries, support or returns, visit Help & Support in your app or email support@quickpal.in</p>
+          <p style="margin: 0;">For queries, support or returns, visit Help & Support in your app or email <strong>quickpal.in@outlook.com</strong></p>
           <p style="margin-top: 4px; font-size: 10px; color: #9ca3af;">Computer Generated Express Tax Invoice & Order Summary</p>
         </div>
       </div>

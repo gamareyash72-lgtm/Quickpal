@@ -18,7 +18,11 @@ import {
   KeyRound,
   Lock,
   Copy,
-  Check
+  Check,
+  MessageSquare,
+  Mail,
+  Send,
+  AlertCircle
 } from 'lucide-react';
 
 interface LiveOrderTrackingModalProps {
@@ -30,9 +34,17 @@ export const LiveOrderTrackingModal: React.FC<LiveOrderTrackingModalProps> = ({
   orderId,
   onClose,
 }) => {
-  const { orders, partners } = useApp();
+  const { orders, partners, currentUser, submitSupportTicket } = useApp();
   const [copiedOtp, setCopiedOtp] = useState(false);
   const [showSecureCall, setShowSecureCall] = useState(false);
+
+  // Issue Reporting Modal State
+  const [showReportIssueModal, setShowReportIssueModal] = useState(false);
+  const [issueSubject, setIssueSubject] = useState('Order Delivery / Item Inquiry');
+  const [issueDescription, setIssueDescription] = useState('');
+  const [issuePhone, setIssuePhone] = useState(currentUser?.phone || '');
+  const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
+  const [issueSubmittedSuccess, setIssueSubmittedSuccess] = useState(false);
 
   if (!orderId) return null;
 
@@ -47,6 +59,32 @@ export const LiveOrderTrackingModal: React.FC<LiveOrderTrackingModalProps> = ({
       navigator.clipboard.writeText(effectiveOtp);
       setCopiedOtp(true);
       setTimeout(() => setCopiedOtp(false), 2000);
+    }
+  };
+
+  const handleReportIssueSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!issueDescription.trim()) return;
+
+    setIsSubmittingIssue(true);
+    try {
+      await submitSupportTicket({
+        customerName: order.customerName || (currentUser ? currentUser.name : 'Valued Customer'),
+        customerPhone: issuePhone || order.customerPhone,
+        customerEmail: currentUser?.email,
+        orderId: order.id,
+        subject: `[Order #${order.id}] ${issueSubject}`,
+        message: issueDescription.trim()
+      });
+
+      setIssueSubmittedSuccess(true);
+      setTimeout(() => {
+        setIssueSubmittedSuccess(false);
+        setShowReportIssueModal(false);
+        setIssueDescription('');
+      }, 3500);
+    } finally {
+      setIsSubmittingIssue(false);
     }
   };
 
@@ -264,15 +302,161 @@ export const LiveOrderTrackingModal: React.FC<LiveOrderTrackingModalProps> = ({
               <span>₹{order.total}</span>
             </div>
 
-            <button
-              onClick={() => printOrderReceipt(order)}
-              className="w-full mt-3 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-700 font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all"
-            >
-              <Printer className="w-4 h-4 text-orange-600 dark:text-orange-400" /> Print Official Order Receipt
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+              <button
+                onClick={() => printOrderReceipt(order)}
+                className="bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-700 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
+              >
+                <Printer className="w-4 h-4 text-orange-600 dark:text-orange-400" /> Print Receipt
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowReportIssueModal(true)}
+                className="bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/40 dark:hover:bg-orange-900/60 text-orange-700 dark:text-orange-300 border border-orange-300 dark:border-orange-800/80 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all"
+              >
+                <MessageSquare className="w-4 h-4 text-orange-600" /> Report Order Issue
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Report Order Issue / Grievance Modal with Direct Forwarding to quickpal.in@outlook.com */}
+      {showReportIssueModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-gray-200 dark:border-gray-800 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-orange-500/20 text-orange-600 flex items-center justify-center">
+                  <AlertCircle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-900 dark:text-gray-100">
+                    Report Issue for Order #{order.id}
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-bold">
+                    Direct escalation to quickpal.in@outlook.com
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowReportIssueModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded-full"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Email Auto-Forward Notification Strip */}
+            <div className="bg-orange-50 dark:bg-orange-950/40 p-3 rounded-2xl border border-orange-200 dark:border-orange-900/60 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 text-orange-700 dark:text-orange-300 font-bold text-[11px]">
+                <Mail className="w-3.5 h-3.5" />
+                <span>Automated Grievance Forwarder Active</span>
+              </div>
+              <p className="text-[10px] text-gray-600 dark:text-gray-300">
+                Your detailed issue description will be immediately transmitted to{' '}
+                <span className="font-mono font-bold text-orange-600 dark:text-orange-400">quickpal.in@outlook.com</span>.
+              </p>
+            </div>
+
+            {issueSubmittedSuccess ? (
+              <div className="p-6 text-center space-y-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 animate-in zoom-in-95">
+                <div className="w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto shadow-md">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-emerald-900 dark:text-emerald-100">
+                    Issue Forwarded Successfully!
+                  </h4>
+                  <p className="text-xs text-emerald-800 dark:text-emerald-300 font-medium mt-1">
+                    Your grievance for Order #{order.id} has been emailed to{' '}
+                    <span className="font-mono font-bold text-orange-600 dark:text-orange-400">quickpal.in@outlook.com</span>. Our support team is resolving this.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleReportIssueSubmit} className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">
+                    Issue Type
+                  </label>
+                  <select
+                    value={issueSubject}
+                    onChange={e => setIssueSubject(e.target.value)}
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
+                  >
+                    <option value="Delivery Delayed">Delivery Delay Inquiry</option>
+                    <option value="Missing or Damaged Item">Missing or Damaged Item</option>
+                    <option value="Wrong Item Received">Wrong Item Received</option>
+                    <option value="Payment / Billing Issue">Payment / Billing Discrepancy</option>
+                    <option value="Rider Behavior / Assistance">Rider Assistance</option>
+                    <option value="Refund Request">Refund Request</option>
+                    <option value="Other Query">Other Grievance</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">
+                    Callback Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={issuePhone}
+                    onChange={e => setIssuePhone(e.target.value)}
+                    placeholder="+91 98989 12345"
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold uppercase text-gray-400 block">
+                      Detailed Issue Description <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[9px] text-orange-500 font-bold">Transmitted to inbox</span>
+                  </div>
+                  <textarea
+                    required
+                    rows={4}
+                    value={issueDescription}
+                    onChange={e => setIssueDescription(e.target.value)}
+                    placeholder="Provide full details regarding the issue with your items or delivery..."
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-xs leading-relaxed"
+                  ></textarea>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={isSubmittingIssue}
+                    onClick={() => setShowReportIssueModal(false)}
+                    className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingIssue}
+                    className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-md flex items-center gap-1.5 transition-all transform active:scale-95 disabled:opacity-50"
+                  >
+                    {isSubmittingIssue ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        Forwarding...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" /> Submit & Forward to Email
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Customer to Rider Secure VoIP Call Bridge */}
       {partner && (

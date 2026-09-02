@@ -3,6 +3,10 @@ import { useApp } from '../context/AppContext';
 import { AdminDashboard } from './AdminDashboard';
 import { UserRole } from '../types';
 import {
+  exportMasterDatabaseToExcel,
+  exportUsersExcel
+} from '../utils/excelExport';
+import {
   Crown,
   UserPlus,
   Users,
@@ -17,7 +21,8 @@ import {
   CheckCircle2,
   XCircle,
   KeyRound,
-  Shield
+  Shield,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export const OwnerDashboard: React.FC = () => {
@@ -29,6 +34,7 @@ export const OwnerDashboard: React.FC = () => {
     createUserByAdmin,
     deleteUser,
     toggleUserStatus,
+    purgeAllTrialData,
     currentUser
   } = useApp();
 
@@ -125,7 +131,35 @@ export const OwnerDashboard: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-3 shrink-0 flex-wrap sm:flex-nowrap">
+          <button
+            onClick={() => {
+              exportMasterDatabaseToExcel({
+                orders,
+                products,
+                categories: [],
+                partners,
+                users,
+                tickets: []
+              });
+            }}
+            className="bg-emerald-500 hover:bg-emerald-600 text-emerald-950 font-black text-xs px-3.5 py-2.5 rounded-2xl shadow-lg flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            title="Download complete multi-sheet Excel file (.xlsx)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-950" /> Download Master Excel (.xlsx)
+          </button>
+          <button
+            onClick={async () => {
+              if (confirm('⚠️ Owner Authorization: Are you sure you want to purge ALL trial and test data across all 4 portal websites (Customer, Store Staff, Delivery Partner, Admin/Owner)? This will permanently clear test orders, demo support tickets, fake logs, and trial partners.')) {
+                const res = await purgeAllTrialData();
+                alert(res.message);
+              }
+            }}
+            className="bg-rose-600/80 hover:bg-rose-600 text-white font-black text-xs px-3.5 py-2.5 rounded-2xl shadow-lg flex items-center gap-1.5 border border-rose-400/40 transition-all hover:scale-105 active:scale-95"
+            title="Clean all trial & demo data from all 4 portals"
+          >
+            <Trash2 className="w-4 h-4 text-rose-200" /> Purge All Trial Data
+          </button>
           <button
             onClick={() => setShowUserModal(true)}
             className="bg-white text-orange-950 hover:bg-amber-100 font-black text-xs px-4 py-2.5 rounded-2xl shadow-lg flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95"
@@ -199,7 +233,14 @@ export const OwnerDashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <button
+              onClick={() => exportUsersExcel(users)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 shrink-0 cursor-pointer"
+              title="Export staff & user accounts to Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-4 h-4" /> Export Staff (.xlsx)
+            </button>
             <button
               onClick={() => setShowUserModal(true)}
               className="bg-orange-500 hover:bg-orange-600 text-white font-black text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 shrink-0"

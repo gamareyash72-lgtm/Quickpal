@@ -70,6 +70,7 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
   if (!isOpen) return null;
 
   const quickPrompts = [
+    { label: '✉️ Contact Support Email', query: 'What is QuickPal customer support email and helpline?' },
     { label: '📦 Where is my order?', query: 'What is the status of my live order?' },
     { label: '🥛 Recommend milk & bread', query: 'Recommend daily fresh milk and bread' },
     { label: '💰 Free delivery limit?', query: 'How do I get free express delivery?' },
@@ -175,7 +176,7 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
         {
           id: 'ast-' + Date.now(),
           sender: 'assistant',
-          text: "QuickPal express delivery takes 10 to 15 minutes! Orders above ₹199 get FREE delivery. Is there a specific item or order you'd like me to help with?",
+          text: "QuickPal express delivery takes 30 minutes! Orders above ₹199 get FREE delivery. Is there a specific item or order you'd like me to help with?",
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);

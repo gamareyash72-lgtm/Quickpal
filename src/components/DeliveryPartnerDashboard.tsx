@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Order } from '../types';
 import { DeliveryRouteMapModal } from './DeliveryRouteMapModal';
@@ -6,6 +6,7 @@ import { DeliveryOtpModal } from './DeliveryOtpModal';
 import { SecureCallModal } from './SecureCallModal';
 import { maskPhoneNumber } from '../utils/phonePrivacy';
 import { db, auth, onSnapshot, collection } from '../lib/firebase';
+import { orderAlertSound } from '../utils/orderAlertSound';
 import {
   Bike,
   CheckCircle,
@@ -26,7 +27,11 @@ import {
   Wifi,
   WifiOff,
   KeyRound,
-  Lock
+  Lock,
+  Volume2,
+  VolumeX,
+  Bell,
+  BellRing
 } from 'lucide-react';
 
 export const DeliveryPartnerDashboard: React.FC = () => {
@@ -56,6 +61,9 @@ export const DeliveryPartnerDashboard: React.FC = () => {
   } | null>(null);
   const [mapDefaultLeg, setMapDefaultLeg] = useState<'store' | 'customer'>('store');
   const [selectedZonePincode, setSelectedZonePincode] = useState<string>(activePartner?.pinCode || '401102');
+  const [isSoundMuted, setIsSoundMuted] = useState<boolean>(!orderAlertSound.isSoundActive());
+  const [isRingingNow, setIsRingingNow] = useState<boolean>(false);
+  const previousPendingCount = useRef<number>(0);
   
   // Real-time listener connection & error diagnostics state
   const [listenerStatus, setListenerStatus] = useState<'connected' | 'reconnecting' | 'error'>('connecting' as any);
@@ -180,6 +188,54 @@ export const DeliveryPartnerDashboard: React.FC = () => {
 
     return isEligibleStatus && isUnassigned && notResponded && isZoneMatch;
   });
+
+  // Trigger Real-Time Ringtone alert when incoming eligible orders arrive for Delivery Partner
+  useEffect(() => {
+    const isOnline = !!activePartner?.isOnline;
+    const currentPendingCount = pendingOrders.length;
+
+    if (isOnline && currentPendingCount > 0) {
+      // If new orders just arrived or we are online with pending orders, ring!
+      orderAlertSound.startContinuousRingtone();
+      setIsRingingNow(true);
+    } else {
+      orderAlertSound.stopRingtone();
+      setIsRingingNow(false);
+    }
+
+    previousPendingCount.current = currentPendingCount;
+
+    return () => {
+      orderAlertSound.stopRingtone();
+      setIsRingingNow(false);
+    };
+  }, [pendingOrders.length, activePartner?.isOnline]);
+
+  const handleToggleSound = () => {
+    const nextState = orderAlertSound.toggleSound();
+    setIsSoundMuted(!nextState);
+    if (nextState && pendingOrders.length > 0 && activePartner?.isOnline) {
+      orderAlertSound.startContinuousRingtone();
+      setIsRingingNow(true);
+    } else {
+      setIsRingingNow(false);
+    }
+  };
+
+  const handleTestBell = () => {
+    orderAlertSound.unlockAudio();
+    orderAlertSound.playNotificationBell();
+  };
+
+  const handleTestChime = () => {
+    orderAlertSound.unlockAudio();
+    orderAlertSound.playSingleChime();
+  };
+
+  const handleTestAcceptSound = () => {
+    orderAlertSound.unlockAudio();
+    orderAlertSound.playOrderAcceptedSound();
+  };
 
   // Orders accepted by this partner
   const myAssignedOrders = (orders || []).filter(
@@ -309,8 +365,50 @@ export const DeliveryPartnerDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Online / Offline Toggle */}
-        <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-gray-100 dark:border-gray-800">
+        {/* Sound Controls and Online / Offline Toggle */}
+        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-gray-100 dark:border-gray-800 flex-wrap">
+          {/* Sound Mute / Unmute & Test Ringtone */}
+          <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800 p-1 rounded-2xl border border-gray-200 dark:border-gray-700">
+            <button
+              onClick={handleToggleSound}
+              title={isSoundMuted ? "Unmute Order Alert Ringtone" : "Mute Order Alert Ringtone"}
+              className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                !isSoundMuted
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'bg-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+              }`}
+            >
+              {!isSoundMuted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              <span className="text-[10px] font-black uppercase hidden sm:inline">
+                {!isSoundMuted ? 'Sound ON' : 'Muted'}
+              </span>
+            </button>
+
+            <button
+              onClick={handleTestBell}
+              title="Test Notification Bell Sound"
+              className="px-2 py-1 bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl text-[10px] font-black uppercase border border-gray-200 dark:border-gray-600 transition-all active:scale-95 flex items-center gap-1"
+            >
+              <Bell className="w-3 h-3 text-amber-500" /> Bell
+            </button>
+
+            <button
+              onClick={handleTestChime}
+              title="Test Order Ringtone Sound"
+              className="px-2 py-1 bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl text-[10px] font-black uppercase border border-gray-200 dark:border-gray-600 transition-all active:scale-95 flex items-center gap-1"
+            >
+              <BellRing className="w-3 h-3 text-orange-500" /> Ring
+            </button>
+
+            <button
+              onClick={handleTestAcceptSound}
+              title="Test Order Accepted Celebration Sound"
+              className="px-2 py-1 bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-emerald-700 dark:text-emerald-400 rounded-xl text-[10px] font-black uppercase border border-gray-200 dark:border-gray-600 transition-all active:scale-95 hidden sm:flex items-center gap-1"
+            >
+              <CheckCircle className="w-3 h-3 text-emerald-500" /> Accept
+            </button>
+          </div>
+
           <div className="text-right">
             <div className="flex items-center justify-end gap-1.5 mb-0.5">
               <span className="text-[10px] font-bold text-gray-400 uppercase">Duty Status</span>
@@ -452,6 +550,42 @@ export const DeliveryPartnerDashboard: React.FC = () => {
       {/* Tab 1: New Orders Requiring Accept / Reject */}
       {activeTab === 'pending' && (
         <div className="space-y-4">
+          {/* Incoming Ringing Order Audio Alert Banner */}
+          {activePartner.isOnline && pendingOrders.length > 0 && (
+            <div className="bg-amber-400 text-orange-950 p-4 rounded-3xl font-black flex items-center justify-between shadow-lg animate-bounce border-2 border-yellow-500">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-950 text-yellow-400 rounded-2xl">
+                  <BellRing className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="text-sm uppercase tracking-wider font-black">
+                    🔔 Incoming Order Ringing ({pendingOrders.length})
+                  </h4>
+                  <p className="text-xs font-semibold text-orange-950/80">
+                    Accept before delivery timer expires to claim ₹40 payout!
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleTestBell}
+                  className="px-2.5 py-1.5 bg-orange-950/20 hover:bg-orange-950/30 text-orange-950 rounded-xl text-xs font-black shadow-xs transition-all flex items-center gap-1"
+                  title="Play Notification Bell"
+                >
+                  <Bell className="w-3.5 h-3.5" /> Bell
+                </button>
+                <button
+                  onClick={handleTestChime}
+                  className="px-3 py-1.5 bg-orange-950 text-yellow-400 rounded-xl text-xs font-black shadow-xs hover:bg-black transition-all flex items-center gap-1"
+                  title="Play Incoming Order Ringtone"
+                >
+                  <BellRing className="w-3.5 h-3.5" /> Play Ring
+                </button>
+              </div>
+            </div>
+          )}
+
           {!activePartner.isOnline ? (
             <div className="bg-amber-50 dark:bg-amber-950/40 p-6 rounded-3xl border border-amber-200 dark:border-amber-900 text-center space-y-2">
               <ShieldAlert className="w-8 h-8 text-amber-600 mx-auto" />
@@ -547,6 +681,10 @@ export const DeliveryPartnerDashboard: React.FC = () => {
 
                   <button
                     onClick={async () => {
+                      orderAlertSound.unlockAudio();
+                      orderAlertSound.stopRingtone();
+                      setIsRingingNow(false);
+                      orderAlertSound.playOrderAcceptedSound();
                       const res = await partnerRespondToOrder(ord.id, 'accepted');
                       if (!res.success) {
                         alert(res.message);
@@ -555,7 +693,7 @@ export const DeliveryPartnerDashboard: React.FC = () => {
                         handleOpenMap({ ...ord, status: 'PARTNER_ACCEPTED' }, 'store');
                       }
                     }}
-                    className="flex-2 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-500/30 transition-all transform active:scale-95"
+                    className="flex-2 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-500/30 transition-all transform active:scale-95 cursor-pointer"
                   >
                     <CheckCircle className="w-4 h-4" /> Accept & Start Store Map Route
                   </button>

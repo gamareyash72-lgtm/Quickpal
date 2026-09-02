@@ -1,11 +1,11 @@
 {
-  "name": "QuickPal – Fast Delivery at Your Doorstep",
+  "name": "QuickPal – Saphale's First Ever Online delivery at your doorstep",
   "short_name": "QuickPal",
-  "description": "QuickPal - Express Grocery & Daily Essentials Delivery in Saphale (401102)",
+  "description": "QuickPal – Saphale's First Ever Online delivery at your doorstep (401102)",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ea580c",
+  "background_color": "#FF6A00",
+  "theme_color": "#FF6A00",
   "orientation": "portrait-primary",
   "icons": [
     {

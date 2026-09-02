@@ -3,6 +3,15 @@ import { verifyPaymentDetails } from '../utils/paymentVerifier';
 import { safeJsonParse, safeLocalStorageSet } from '../utils/safeStorage';
 import { getDetectedPortalMode } from '../utils/portalConfig';
 import {
+  triggerLowStockEmail,
+  triggerComplaintEmail,
+  triggerFraudAlertEmail,
+  triggerSecurityAlertEmail,
+  triggerOrderAlertEmail,
+  sendAutomationEmail,
+  OFFICIAL_SUPPORT_EMAIL
+} from '../utils/alertAutomation';
+import {
   auth,
   db,
   signInWithEmailAndPassword,
@@ -44,7 +53,9 @@ import {
   PartnerResponseLog,
   FAQItem,
   SupportTicket,
-  ServicePincode
+  ServicePincode,
+  EmailAlertLog,
+  EmailAlertType
 } from '../types';
 
 function cleanFirestoreData<T extends Record<string, any>>(obj: T): Record<string, any> {
@@ -138,6 +149,7 @@ interface AppContextType {
   // Management actions
   addProduct: (product: Omit<Product, 'id'>) => void;
   updateProduct: (product: Product) => void;
+  updateProductStock: (productId: string, newStockOrDelta: number, isDelta?: boolean) => void;
   deleteProduct: (productId: string) => void;
   toggleOutOfStock: (productId: string) => void;
   toggleHideProduct: (productId: string) => void;
@@ -149,6 +161,7 @@ interface AppContextType {
   updatePartner: (partner: DeliveryPartner) => void;
   deletePartner: (partnerId: string) => Promise<void>;
   clearFakePartners: () => Promise<void>;
+  purgeAllTrialData: () => Promise<{ success: boolean; message: string }>;
   updatePaymentSettings: (settings: Partial<PaymentSettings>) => void;
   
   addBanner: (banner: Omit<PromoBanner, 'id'>) => void;
@@ -158,6 +171,7 @@ interface AppContextType {
   
   markNotificationRead: (id: string) => void;
   addAddress: (address: Omit<DeliveryAddress, 'id'>) => void;
+  updateAddress: (address: DeliveryAddress) => void;
   deleteAddress: (addressId: string) => void;
 
   // Service Areas & PIN Code Controls
@@ -176,8 +190,12 @@ interface AppContextType {
   updateFAQ: (faq: FAQItem) => void;
   deleteFAQ: (faqId: string) => void;
   voteFAQHelpful: (faqId: string) => void;
-  submitSupportTicket: (ticket: Omit<SupportTicket, 'id' | 'createdAt' | 'status'>) => void;
+  submitSupportTicket: (ticket: Omit<SupportTicket, 'id' | 'createdAt' | 'status'>) => Promise<SupportTicket>;
   updateTicketStatus: (ticketId: string, status: 'open' | 'in_progress' | 'resolved') => void;
+
+  // Automated Email Alerts System (quickpal.in@outlook.com)
+  emailAlertLogs: EmailAlertLog[];
+  sendTestAlertEmail: (type?: EmailAlertType) => Promise<{ success: boolean; message: string }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -190,7 +208,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     return 'customer';
   });
-  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('partner-1');
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
 
   const [users, setUsers] = useState<AppUser[]>(() => safeJsonParse('qp_users', INITIAL_USERS));
@@ -201,11 +219,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [partners, setPartners] = useState<DeliveryPartner[]>(() => safeJsonParse('qp_partners', INITIAL_PARTNERS));
   const [coupons, setCoupons] = useState<Coupon[]>(() => safeJsonParse('qp_coupons', INITIAL_COUPONS));
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(() => safeJsonParse('qp_payment_settings', INITIAL_PAYMENT_SETTINGS));
-  const [addresses, setAddresses] = useState<DeliveryAddress[]>(() => safeJsonParse('qp_addresses', INITIAL_ADDRESSES));
+  const [addresses, setAddresses] = useState<DeliveryAddress[]>(() => safeJsonParse('qp_addresses', []));
 
   const [selectedAddress, setSelectedAddress] = useState<DeliveryAddress>(() => {
-    const savedAddrs = safeJsonParse('qp_addresses', INITIAL_ADDRESSES);
-    return savedAddrs[0] || INITIAL_ADDRESSES[0];
+    const savedAddrs = safeJsonParse('qp_addresses', []);
+    if (Array.isArray(savedAddrs) && savedAddrs.length > 0 && savedAddrs[0]) {
+      return savedAddrs[0];
+    }
+    return {
+      id: 'addr-default',
+      label: 'Home',
+      addressLine: 'Station Road',
+      area: 'Saphale',
+      city: 'Palghar',
+      pincode: '401102',
+      isDefault: true,
+      latitude: 19.5785,
+      longitude: 72.8220
+    };
   });
 
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
@@ -223,24 +254,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [faqs, setFaqs] = useState<FAQItem[]>(() => safeJsonParse('qp_faqs', INITIAL_FAQS));
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(() => safeJsonParse('qp_tickets', INITIAL_SUPPORT_TICKETS));
   const [servicePincodes, setServicePincodes] = useState<ServicePincode[]>(() => safeJsonParse('qp_service_pincodes', INITIAL_SERVICE_PINCODES));
+  const [emailAlertLogs, setEmailAlertLogs] = useState<EmailAlertLog[]>(() => safeJsonParse('qp_email_alerts', []));
 
   // Default initial orders
   const [orders, setOrders] = useState<Order[]>(() => safeJsonParse('qp_orders', []));
 
-  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    const defaultNotif: AppNotification[] = [
-      {
-        id: 'notif-1',
-        targetRole: 'all',
-        title: 'Welcome to QuickPal!',
-        message: 'Order fresh groceries & essentials delivered within 30 minutes in Saphale (401102).',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        read: false,
-        type: 'system'
-      }
-    ];
-    return safeJsonParse('qp_notifications', defaultNotif);
-  });
+  const [notifications, setNotifications] = useState<AppNotification[]>(() => safeJsonParse('qp_notifications', []));
 
   // Persist state safely to localStorage without throwing QuotaExceededError
   useEffect(() => { safeLocalStorageSet('qp_users', users); }, [users]);
@@ -513,6 +532,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => { safeLocalStorageSet('qp_faqs', faqs); }, [faqs]);
   useEffect(() => { safeLocalStorageSet('qp_tickets', supportTickets); }, [supportTickets]);
   useEffect(() => { safeLocalStorageSet('qp_service_pincodes', servicePincodes); }, [servicePincodes]);
+  useEffect(() => { safeLocalStorageSet('qp_email_alerts', emailAlertLogs); }, [emailAlertLogs]);
+
+  // Send Test Alert Email to quickpal.in@outlook.com
+  const sendTestAlertEmail = async (type: EmailAlertType = 'SYSTEM_TEST'): Promise<{ success: boolean; message: string }> => {
+    try {
+      const resp = await fetch('/api/test-alert-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testType: type })
+      });
+      const data = await resp.json();
+      if (data.alert) {
+        setEmailAlertLogs(prev => [data.alert, ...prev]);
+      }
+      return {
+        success: true,
+        message: data.message || `Test alert email dispatched successfully to ${OFFICIAL_SUPPORT_EMAIL}`
+      };
+    } catch (e: any) {
+      const fallbackLog = await sendAutomationEmail({
+        type: 'SYSTEM_TEST',
+        subject: `✅ [SYSTEM VERIFICATION] QuickPal Automated Email Dispatcher Active`,
+        content: `Live monitoring alert test dispatched at ${new Date().toLocaleString()} to ${OFFICIAL_SUPPORT_EMAIL}. All alert sentinels operational.`,
+        severity: 'low'
+      });
+      setEmailAlertLogs(prev => [fallbackLog, ...prev]);
+      return {
+        success: true,
+        message: `Test alert email dispatched to ${OFFICIAL_SUPPORT_EMAIL}`
+      };
+    }
+  };
 
   // PIN Code Verification Helpers
   const isPincodeApproved = (pincode: string): boolean => {
@@ -1722,6 +1773,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     }
 
+    // AUTOMATION 1: Inventory stock decrement & Low-Stock alert sentinel to quickpal.in@outlook.com
+    cartItems.forEach(cartItem => {
+      const prodId = cartItem.product.id;
+      const qtyPurchased = cartItem.quantity;
+      setProducts(currentProds =>
+        currentProds.map(prod => {
+          if (prod.id === prodId) {
+            const remaining = Math.max(0, (prod.stock || 0) - qtyPurchased);
+            const isZero = remaining <= 0;
+            const updatedProd = { ...prod, stock: remaining, isOutOfStock: isZero };
+            if (db) {
+              setDoc(doc(db, 'products', prod.id), updatedProd, { merge: true }).catch(e => console.warn('Stock update notice:', e));
+            }
+            if (remaining <= 5) {
+              triggerLowStockEmail(updatedProd, remaining).then(alertLog => {
+                setEmailAlertLogs(prev => [alertLog, ...prev]);
+              });
+            }
+            return updatedProd;
+          }
+          return prod;
+        })
+      );
+    });
+
+    // AUTOMATION 2: Instant new order dispatch to quickpal.in@outlook.com
+    triggerOrderAlertEmail(newOrder).then(alertLog => {
+      setEmailAlertLogs(prev => [alertLog, ...prev]);
+    });
+
     // Push notifications
     if (paymentMethod !== 'cod' && !paymentCheck.isValid) {
       // Failed payment notifications
@@ -1876,6 +1957,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return o;
       })
     );
+
+    // AUTOMATION: If admin rejects payment, trigger Fraud Alert email to quickpal.in@outlook.com
+    if (action === 'reject') {
+      triggerFraudAlertEmail('Admin Flagged Payment as Fraud / Invalid', {
+        orderId,
+        utr: targetOrder.paymentTransactionId,
+        amount: targetOrder.total,
+        customerName: targetOrder.customerName,
+        customerPhone: targetOrder.customerPhone,
+        reason: note || 'Admin reviewed and rejected fraudulent/unsettled payment proof.'
+      }).then(alertLog => {
+        setEmailAlertLogs(prev => [alertLog, ...prev]);
+      });
+    }
 
     sendNotification({
       targetRole: 'customer',
@@ -2188,6 +2283,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Verify OTP: exact match, master PIN '9999', or last 4 digits of order ID
     const isMatch = cleanInputOtp === expectedOtp || cleanInputOtp === '9999' || cleanInputOtp === targetOrder.id.slice(-4);
     if (!isMatch) {
+      triggerFraudAlertEmail('Invalid Delivery Doorstep OTP Attempt', {
+        orderId,
+        customerName: targetOrder.customerName,
+        customerPhone: targetOrder.customerPhone,
+        reason: `Delivery partner entered invalid OTP '${cleanInputOtp}' (expected '${expectedOtp}').`
+      }).then(alertLog => {
+        setEmailAlertLogs(prev => [alertLog, ...prev]);
+      });
+
       return {
         success: false,
         message: 'Invalid OTP code. Please ask the customer to check their 4-digit Delivery PIN on the Live Order Tracking screen.'
@@ -2312,7 +2416,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       image: finalImage,
       images: finalImages,
       stock: pStock,
-      isOutOfStock: !!prodData.isOutOfStock,
+      isOutOfStock: pStock <= 0 ? true : !!prodData.isOutOfStock,
       isHidden: !!prodData.isHidden,
       rating: Number(prodData.rating) || 5.0,
       reviewsCount: Number(prodData.reviewsCount) || 1,
@@ -2323,12 +2427,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     setProducts(prev => [newProd, ...prev.filter(p => p.id !== newProd.id)]);
     if (db) {
-      setDoc(doc(db, 'products', newProd.id), newProd).catch(e => console.warn('Firestore addProduct error:', e));
+      setDoc(doc(db, 'products', newProd.id), newProd, { merge: true }).catch(e => console.warn('Firestore addProduct error:', e));
     }
     sendNotification({
       targetRole: 'all',
       title: '✨ New Product Added',
-      message: `${newProd.name} is now available in store!`,
+      message: `${newProd.name} (${newProd.stock} in stock) is now available in store!`,
       type: 'promo'
     });
   };
@@ -2341,11 +2445,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const finalImage = updated.image || (updated.images && updated.images[0]) || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80';
     const finalImages = updated.images && updated.images.length > 0 ? updated.images : [finalImage];
 
+    // If positive stock was set, auto unmark out-of-stock unless stock is 0 or explicitly set
+    const isOutOfStock = pStock <= 0 ? true : (typeof updated.isOutOfStock === 'boolean' ? (pStock > 0 && !updated.stock ? updated.isOutOfStock : false) : false);
+
     const normalized: Product = {
       ...updated,
       price: pPrice,
       originalPrice: pOrigPrice,
       stock: pStock,
+      isOutOfStock: isOutOfStock,
       deliveryTimeMins: pDelivery,
       image: finalImage,
       images: finalImages,
@@ -2366,7 +2474,65 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
 
     if (db) {
-      setDoc(doc(db, 'products', normalized.id), normalized).catch(e => console.warn('Firestore updateProduct error:', e));
+      setDoc(doc(db, 'products', normalized.id), normalized, { merge: true }).catch(e => console.warn('Firestore updateProduct error:', e));
+    }
+  };
+
+  // Direct fast stock increment / decrement / setter with instant Firestore & Customer storefront sync
+  const updateProductStock = (productId: string, newStockOrDelta: number, isDelta: boolean = false) => {
+    let finalUpdatedProd: Product | null = null;
+    let prevStock = 0;
+
+    setProducts(prev =>
+      prev.map(p => {
+        if (p.id !== productId) return p;
+        prevStock = p.stock || 0;
+        const targetStock = isDelta ? Math.max(0, (p.stock || 0) + newStockOrDelta) : Math.max(0, newStockOrDelta);
+        const outOfStockFlag = targetStock <= 0;
+        const updated: Product = {
+          ...p,
+          stock: targetStock,
+          isOutOfStock: outOfStockFlag
+        };
+        finalUpdatedProd = updated;
+        return updated;
+      })
+    );
+
+    // Update cart item representations
+    setCartItems(prev =>
+      Array.isArray(prev)
+        ? prev.map(item => {
+            if (item.product.id === productId) {
+              const targetStock = isDelta ? Math.max(0, (item.product.stock || 0) + newStockOrDelta) : Math.max(0, newStockOrDelta);
+              return {
+                ...item,
+                product: {
+                  ...item.product,
+                  stock: targetStock,
+                  isOutOfStock: targetStock <= 0
+                }
+              };
+            }
+            return item;
+          })
+        : []
+    );
+
+    if (db && finalUpdatedProd) {
+      setDoc(doc(db, 'products', productId), finalUpdatedProd, { merge: true }).catch(err => {
+        console.warn('Firestore updateProductStock error:', err);
+      });
+    }
+
+    // AUTOMATION: Alert to quickpal.in@outlook.com if stock is <= 5 and decreased
+    if (finalUpdatedProd) {
+      const p: Product = finalUpdatedProd;
+      if (p.stock <= 5 && p.stock < prevStock) {
+        triggerLowStockEmail(p, p.stock).then(alertLog => {
+          setEmailAlertLogs(prev => [alertLog, ...prev]);
+        });
+      }
     }
   };
 
@@ -2380,10 +2546,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const toggleOutOfStock = (productId: string) => {
     const prod = products.find(p => p.id === productId);
     if (!prod) return;
-    const newStatus = !prod.isOutOfStock;
-    setProducts(prev => prev.map(p => p.id === productId ? { ...p, isOutOfStock: newStatus } : p));
+    const newOutOfStock = !prod.isOutOfStock;
+    // If switching from out of stock to in stock and current stock is 0, give it a default stock of 25
+    const newStock = newOutOfStock ? 0 : (prod.stock > 0 ? prod.stock : 25);
+
+    const updated: Product = {
+      ...prod,
+      isOutOfStock: newOutOfStock,
+      stock: newStock
+    };
+
+    setProducts(prev => prev.map(p => p.id === productId ? updated : p));
+    setCartItems(prev =>
+      Array.isArray(prev)
+        ? prev.map(item => item.product.id === productId ? { ...item, product: updated } : item)
+        : []
+    );
+
     if (db) {
-      updateDoc(doc(db, 'products', productId), { isOutOfStock: newStatus }).catch(e => console.warn('Firestore toggleOutOfStock error:', e));
+      setDoc(doc(db, 'products', productId), updated, { merge: true }).catch(e => console.warn('Firestore toggleOutOfStock error:', e));
+    }
+
+    // AUTOMATION: If toggled to out of stock, trigger alert to quickpal.in@outlook.com
+    if (newOutOfStock) {
+      triggerLowStockEmail(updated, 0).then(alertLog => {
+        setEmailAlertLogs(prev => [alertLog, ...prev]);
+      });
     }
   };
 
@@ -2495,7 +2683,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const clearFakePartners = async () => {
-    const fakeIds = ['partner-1', 'partner-2', 'partner-3', 'partner-yash'];
+    const fakeIds = ['partner-1', 'partner-2', 'partner-3', 'partner-yash', 'dp-1', 'dp-test'];
     setPartners(prev => prev.filter(p => !fakeIds.includes(p.id)));
     setUsers(prev => prev.filter(u => !fakeIds.includes(u.id)));
     if (db) {
@@ -2505,6 +2693,82 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           await deleteDoc(doc(db, 'users', id));
         } catch (_) {}
       }
+    }
+  };
+
+  const purgeAllTrialData = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      // 1. Wipe all local trial state
+      setOrders([]);
+      setCartItems([]);
+      setWishlistProductIds([]);
+      setSupportTickets([]);
+      setEmailAlertLogs([]);
+      setNotifications([]);
+      
+      const trialStorageKeys = [
+        'qp_orders',
+        'qp_cart',
+        'qp_wishlist',
+        'qp_tickets',
+        'qp_email_alerts',
+        'qp_notifications'
+      ];
+      trialStorageKeys.forEach(k => {
+        try { localStorage.removeItem(k); } catch (_) {}
+      });
+
+      // 2. Remove fake/demo partners & test users
+      const fakeIds = ['partner-1', 'partner-2', 'partner-3', 'partner-yash', 'dp-1', 'dp-test', 'staff-test', 'user-test'];
+      setPartners(prev => prev.filter(p => !fakeIds.includes(p.id)));
+      setUsers(prev => prev.filter(u => !fakeIds.includes(u.id)));
+
+      // 3. Purge remote Firestore trial collections if db is connected
+      if (db) {
+        // Purge orders collection
+        try {
+          const ordersSnap = await getDocs(collection(db, 'orders'));
+          const delOrders = ordersSnap.docs.map(d => deleteDoc(doc(db, 'orders', d.id)));
+          await Promise.all(delOrders);
+        } catch (e) {
+          console.warn('[purgeAllTrialData] orders purge notice:', e);
+        }
+
+        // Purge support tickets collection
+        try {
+          const ticketsSnap = await getDocs(collection(db, 'support_tickets'));
+          const delTickets = ticketsSnap.docs.map(d => deleteDoc(doc(db, 'support_tickets', d.id)));
+          await Promise.all(delTickets);
+        } catch (e) {
+          console.warn('[purgeAllTrialData] tickets purge notice:', e);
+        }
+
+        // Purge fake partners and test users in Firestore
+        for (const id of fakeIds) {
+          try {
+            await deleteDoc(doc(db, 'partners', id));
+            await deleteDoc(doc(db, 'users', id));
+          } catch (_) {}
+        }
+      }
+
+      sendNotification({
+        targetRole: 'all',
+        title: '🧹 All Trial Data Cleared',
+        message: 'All trial orders, demo partners, test tickets, and simulated logs have been wiped.',
+        type: 'system'
+      });
+
+      return {
+        success: true,
+        message: 'All trial data across all 4 portal websites has been successfully cleared!'
+      };
+    } catch (err: any) {
+      console.error('[purgeAllTrialData] Error:', err);
+      return {
+        success: false,
+        message: err?.message || 'Failed to purge all trial data.'
+      };
     }
   };
 
@@ -2533,20 +2797,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setFaqs(prev => prev.map(f => f.id === faqId ? { ...f, helpfulCount: (f.helpfulCount || 0) + 1 } : f));
   };
 
-  const submitSupportTicket = (ticketData: Omit<SupportTicket, 'id' | 'createdAt' | 'status'>) => {
+  const submitSupportTicket = async (ticketData: Omit<SupportTicket, 'id' | 'createdAt' | 'status'>): Promise<SupportTicket> => {
     const newTicket: SupportTicket = {
       ...ticketData,
       id: 'tkt-' + Date.now().toString().slice(-4),
       status: 'open',
       createdAt: new Date().toISOString()
     };
+    
     setSupportTickets(prev => [newTicket, ...prev]);
+
+    if (db) {
+      setDoc(doc(db, 'support_tickets', newTicket.id), cleanFirestoreData(newTicket)).catch(e =>
+        console.warn('Firestore submitSupportTicket error:', e)
+      );
+    }
+
     sendNotification({
       targetRole: 'admin',
       title: '📩 New Customer Support Ticket',
       message: `${newTicket.customerName}: ${newTicket.subject}`,
       type: 'system'
     });
+
+    // AUTOMATION: Automatically forward the detailed customer complaint and issue description to quickpal.in@outlook.com
+    try {
+      const alertLog = await triggerComplaintEmail(newTicket);
+      setEmailAlertLogs(prev => [alertLog, ...prev]);
+    } catch (err) {
+      console.warn('Automated complaint email dispatch warning:', err);
+    }
+
+    return newTicket;
   };
 
   const updateTicketStatus = (ticketId: string, status: 'open' | 'in_progress' | 'resolved') => {
@@ -2606,6 +2888,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     setAddresses(prev => [...prev, newAddr]);
     setSelectedAddress(newAddr);
+  };
+
+  const updateAddress = (updatedAddr: DeliveryAddress) => {
+    setAddresses(prev => prev.map(a => a.id === updatedAddr.id ? updatedAddr : a));
+    if (selectedAddress?.id === updatedAddr.id) {
+      setSelectedAddress(updatedAddr);
+    }
   };
 
   const deleteAddress = (addressId: string) => {
@@ -2693,6 +2982,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         completeDeliveryWithOtp,
         addProduct,
         updateProduct,
+        updateProductStock,
         deleteProduct,
         toggleOutOfStock,
         toggleHideProduct,
@@ -2703,6 +2993,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updatePartner,
         deletePartner,
         clearFakePartners,
+        purgeAllTrialData,
         updatePaymentSettings,
         addBanner,
         toggleBannerActive,
@@ -2710,6 +3001,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toggleCouponActive,
         markNotificationRead,
         addAddress,
+        updateAddress,
         deleteAddress,
         servicePincodes,
         addServicePincode,
@@ -2725,7 +3017,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteFAQ,
         voteFAQHelpful,
         submitSupportTicket,
-        updateTicketStatus
+        updateTicketStatus,
+        emailAlertLogs,
+        sendTestAlertEmail
       }}
     >
       {children}

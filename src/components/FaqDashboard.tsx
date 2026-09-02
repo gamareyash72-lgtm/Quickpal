@@ -19,10 +19,16 @@ import {
   Bot,
   Phone,
   Lock,
-  Headphones
+  Headphones,
+  Mail,
+  Copy,
+  Check,
+  MessageCircle,
+  Instagram
 } from 'lucide-react';
 import { SecureCallModal } from './SecureCallModal';
-import { maskCustomerCarePhone, DEFAULT_CUSTOMER_CARE_PHONE } from '../utils/phonePrivacy';
+import { EmailSupportModal } from './EmailSupportModal';
+import { maskCustomerCarePhone, DEFAULT_CUSTOMER_CARE_PHONE, DEFAULT_CUSTOMER_CARE_EMAIL, DEFAULT_WHATSAPP_SUPPORT_URL, DEFAULT_INSTAGRAM_URL } from '../utils/phonePrivacy';
 
 interface FaqDashboardProps {
   onOpenAiAssistant: () => void;
@@ -37,22 +43,37 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [expandedFaqId, setExpandedFaqId] = useState<string | null>('faq-1');
+  const [expandedFaqId, setExpandedFaqId] = useState<string | null>('faq-support-email');
   const [votedIds, setVotedIds] = useState<Record<string, boolean>>({});
+  const [copiedEmail, setCopiedEmail] = useState(false);
 
-  // Ticket Form State
+  // Ticket & Email Form State
   const [showTicketModal, setShowTicketModal] = useState(false);
+  const [showEmailSupportModal, setShowEmailSupportModal] = useState(false);
   const [ticketSubmitted, setTicketSubmitted] = useState(false);
+  const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
+  const [lastSubmittedTicketId, setLastSubmittedTicketId] = useState<string | null>(null);
   const [showCustomerCareCallModal, setShowCustomerCareCallModal] = useState(false);
   const [ticketForm, setTicketForm] = useState({
     subject: '',
     message: '',
+    email: currentUser?.email || '',
     phone: currentUser?.phone || '',
     orderId: ''
   });
 
   const customerCareRawPhone = paymentSettings?.customerCarePhone || DEFAULT_CUSTOMER_CARE_PHONE;
+  const customerCareSupportEmail = paymentSettings?.customerCareEmail || DEFAULT_CUSTOMER_CARE_EMAIL;
   const maskedCustomerCare = maskCustomerCarePhone(customerCareRawPhone);
+
+  const handleCopyEmail = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(customerCareSupportEmail);
+      setCopiedEmail(true);
+      setTimeout(() => setCopiedEmail(false), 2000);
+    }
+  };
 
   const categories = [
     { id: 'all', label: 'All Topics', icon: HelpCircle },
@@ -82,22 +103,37 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
     setVotedIds(prev => ({ ...prev, [id]: true }));
   };
 
-  const handleTicketSubmit = (e: React.FormEvent) => {
+  const handleTicketSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ticketForm.subject || !ticketForm.message) return;
-    submitSupportTicket({
-      customerName: currentUser ? currentUser.name : 'Guest Customer',
-      customerPhone: ticketForm.phone,
-      subject: ticketForm.subject,
-      message: ticketForm.message,
-      orderId: ticketForm.orderId || undefined
-    });
-    setTicketSubmitted(true);
-    setTimeout(() => {
-      setTicketSubmitted(false);
-      setShowTicketModal(false);
-      setTicketForm({ subject: '', message: '', phone: currentUser?.phone || '', orderId: '' });
-    }, 2000);
+    
+    setIsSubmittingTicket(true);
+    try {
+      const createdTicket = await submitSupportTicket({
+        customerName: currentUser ? currentUser.name : 'Customer',
+        customerPhone: ticketForm.phone,
+        customerEmail: ticketForm.email || (currentUser ? currentUser.email : undefined),
+        subject: ticketForm.subject,
+        message: ticketForm.message,
+        orderId: ticketForm.orderId || undefined
+      });
+
+      setLastSubmittedTicketId(createdTicket.id);
+      setTicketSubmitted(true);
+      setTimeout(() => {
+        setTicketSubmitted(false);
+        setShowTicketModal(false);
+        setTicketForm({
+          subject: '',
+          message: '',
+          email: currentUser?.email || '',
+          phone: currentUser?.phone || '',
+          orderId: ''
+        });
+      }, 4000);
+    } finally {
+      setIsSubmittingTicket(false);
+    }
   };
 
   return (
@@ -116,8 +152,15 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
           </p>
           <div className="pt-2 flex flex-wrap items-center gap-3">
             <button
+              onClick={() => setShowEmailSupportModal(true)}
+              className="bg-white text-orange-950 hover:bg-orange-50 px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 shadow-lg transition-transform active:scale-95 border border-white"
+            >
+              <Mail className="w-4 h-4 text-orange-600" />
+              Email Support ({customerCareSupportEmail})
+            </button>
+            <button
               onClick={() => setShowCustomerCareCallModal(true)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-950/30 transition-transform active:scale-95 border border-emerald-400/40"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-950/30 transition-transform active:scale-95 border border-emerald-400/40"
             >
               <Phone className="w-4 h-4 text-emerald-200" />
               Call Customer Care ({maskedCustomerCare.split(' ')[1]} 🔒)
@@ -140,13 +183,10 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
         </div>
 
         {/* Decorative Customer Care / AI Card */}
-        <div
-          onClick={() => setShowCustomerCareCallModal(true)}
-          className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-4 rounded-2xl border border-white/20 text-left max-w-xs w-full cursor-pointer hover:bg-white/20 transition-all shadow-inner group"
-        >
-          <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-4 rounded-2xl border border-white/20 text-left max-w-xs w-full transition-all shadow-inner space-y-2">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black shadow-xs group-hover:scale-105 transition-transform">
+              <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black shadow-xs">
                 <Headphones className="w-4 h-4" />
               </div>
               <div>
@@ -160,44 +200,103 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
               Online
             </span>
           </div>
-          <div className="bg-black/25 p-2.5 rounded-xl text-left space-y-1">
+
+          {/* Email Support Pill */}
+          <div className="bg-black/30 p-2.5 rounded-xl text-left space-y-1 border border-white/10">
+            <div className="flex items-center justify-between text-[11px] font-bold text-amber-200">
+              <span className="flex items-center gap-1">
+                <Mail className="w-3 h-3 text-amber-300" />
+                <span className="font-mono text-xs">{customerCareSupportEmail}</span>
+              </span>
+              <button
+                onClick={handleCopyEmail}
+                className="text-[9px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 transition-colors"
+                title="Copy Email ID"
+              >
+                {copiedEmail ? <Check className="w-2.5 h-2.5 text-emerald-300" /> : <Copy className="w-2.5 h-2.5" />}
+                {copiedEmail ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <p className="text-[10px] text-orange-100/90 leading-tight">
+              Official email for order inquiries, refunds, and support feedback.
+            </p>
+          </div>
+
+          <div
+            onClick={() => setShowCustomerCareCallModal(true)}
+            className="bg-black/25 hover:bg-black/35 p-2 rounded-xl text-left space-y-1 cursor-pointer transition-colors"
+          >
             <div className="flex items-center justify-between text-[11px] font-mono font-bold text-amber-200">
               <span>{maskedCustomerCare}</span>
               <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">Encrypted</span>
             </div>
-            <p className="text-[10px] text-orange-100/90 leading-tight">
-              Tap to call our customer care directly with masked caller ID privacy.
+            <p className="text-[9px] text-orange-100/80 leading-tight">
+              Tap to call customer care with masked caller ID privacy.
             </p>
           </div>
         </div>
       </div>
 
       {/* Customer Care Direct Assistance Strip */}
-      <div className="bg-gradient-to-r from-emerald-900/40 via-teal-900/30 to-emerald-950/40 border border-emerald-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+      <div className="bg-gradient-to-r from-orange-950/40 via-amber-950/30 to-orange-950/40 border border-orange-500/30 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-3 shadow-xs">
         <div className="flex items-center gap-3 text-left">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-2xl bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 flex items-center justify-center shrink-0">
+            <Mail className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-black text-gray-900 dark:text-gray-100">
-                Official Customer Care Support Line
+                Official QuickPal Customer Support Email
               </h4>
-              <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
-                <Lock className="w-2.5 h-2.5" /> Privacy Protected
+              <span className="text-[10px] bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+                24/7 Monitored
               </span>
             </div>
             <p className="text-[11px] text-gray-600 dark:text-gray-400">
-              Proxy Helpline: <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{maskedCustomerCare}</span> • Your phone number is never disclosed.
+              Support Desk: <span className="font-mono font-bold text-orange-600 dark:text-orange-400">{customerCareSupportEmail}</span> • Guaranteed response within 15 minutes.
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowCustomerCareCallModal(true)}
-          className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all transform active:scale-95 shrink-0"
-        >
-          <Phone className="w-3.5 h-3.5" /> Call Customer Care
-        </button>
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto shrink-0">
+          <a
+            href={paymentSettings?.whatsappSupportUrl || DEFAULT_WHATSAPP_SUPPORT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-3.5 py-2.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all transform active:scale-95"
+            title="Chat directly on WhatsApp"
+          >
+            <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+          </a>
+          <a
+            href={paymentSettings?.instagramUrl || DEFAULT_INSTAGRAM_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-gradient-to-r from-pink-600 to-rose-600 hover:opacity-90 text-white text-xs font-black px-3.5 py-2.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all transform active:scale-95"
+            title="Follow on Instagram"
+          >
+            <Instagram className="w-3.5 h-3.5" /> @quickpal.in
+          </a>
+          <button
+            onClick={() => setShowEmailSupportModal(true)}
+            className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-black px-3.5 py-2.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all transform active:scale-95"
+          >
+            <Mail className="w-3.5 h-3.5" /> Email Desk
+          </button>
+          <button
+            onClick={handleCopyEmail}
+            className="bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 text-xs font-bold px-3 py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all"
+            title="Copy Email Address"
+          >
+            {copiedEmail ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-gray-500" />}
+            {copiedEmail ? 'Copied' : 'Copy'}
+          </button>
+          <button
+            onClick={() => setShowCustomerCareCallModal(true)}
+            className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black px-3.5 py-2.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all transform active:scale-95"
+          >
+            <Phone className="w-3.5 h-3.5" /> Call
+          </button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -364,15 +463,24 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
         )}
       </div>
 
-      {/* Submit Support Ticket Modal */}
+      {/* Submit Support Ticket Modal with Automated Email Forwarding to quickpal.in@outlook.com */}
       {showTicketModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-gray-200 dark:border-gray-800 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-800">
-              <h3 className="text-sm font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-orange-500" />
-                Contact QuickPal Support Staff
-              </h3>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-orange-500/20 text-orange-600 flex items-center justify-center">
+                  <MessageSquare className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-900 dark:text-gray-100">
+                    Submit Grievance / Ticket
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-bold">
+                    Forwarded instantly to QuickPal Support Desk
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={() => setShowTicketModal(false)}
                 className="p-1 text-gray-400 hover:text-gray-600 rounded-full"
@@ -381,48 +489,92 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
               </button>
             </div>
 
+            {/* Automated Dispatch Sentinel Callout */}
+            <div className="bg-gradient-to-r from-orange-950/20 via-amber-900/15 to-orange-950/20 p-3 rounded-2xl border border-orange-500/30 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 text-orange-600 dark:text-orange-400 font-black text-[11px]">
+                <Mail className="w-3.5 h-3.5" />
+                <span>Automated Email Forwarding Active</span>
+              </div>
+              <p className="text-[10px] text-gray-600 dark:text-gray-300 leading-tight">
+                Your full issue description is dispatched directly to{' '}
+                <span className="font-mono font-bold text-orange-600 dark:text-orange-400">quickpal.in@outlook.com</span>{' '}
+                the moment you tap submit.
+              </p>
+            </div>
+
             {ticketSubmitted ? (
-              <div className="p-6 text-center space-y-2 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200">
-                <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-                <h4 className="text-sm font-black text-emerald-900 dark:text-emerald-100">
-                  Ticket Submitted Successfully!
-                </h4>
-                <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                  Our store team has received your query and will contact you shortly.
-                </p>
+              <div className="p-6 text-center space-y-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 animate-in zoom-in-95">
+                <div className="w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto shadow-md">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider">
+                    Dispatched to Support Inbox
+                  </span>
+                  <h4 className="text-sm font-black text-emerald-900 dark:text-emerald-100">
+                    Ticket #{lastSubmittedTicketId || 'Assigned'} Dispatched!
+                  </h4>
+                  <p className="text-xs text-emerald-800 dark:text-emerald-300 font-medium leading-relaxed">
+                    Your detailed issue description has been forwarded to{' '}
+                    <span className="font-mono font-bold text-orange-600 dark:text-orange-400">
+                      quickpal.in@outlook.com
+                    </span>
+                    . Our customer care desk is reviewing it now.
+                  </p>
+                </div>
+                <div className="pt-1 flex items-center justify-center gap-2">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] font-bold">
+                    ⚡ Guaranteed response within 15 mins
+                  </span>
+                </div>
               </div>
             ) : (
               <form onSubmit={handleTicketSubmit} className="space-y-3">
                 <div>
                   <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">
-                    Your Subject / Issue
+                    Your Subject / Issue <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={ticketForm.subject}
                     onChange={e => setTicketForm({ ...ticketForm, subject: e.target.value })}
-                    placeholder="e.g. Need refund status update for milk item"
+                    placeholder="e.g. Missing item / Order delivery status update"
                     className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
                   />
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    value={ticketForm.phone}
-                    onChange={e => setTicketForm({ ...ticketForm, phone: e.target.value })}
-                    placeholder="+91 98989 12345"
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">
+                      Your Email (for response)
+                    </label>
+                    <input
+                      type="email"
+                      value={ticketForm.email}
+                      onChange={e => setTicketForm({ ...ticketForm, email: e.target.value })}
+                      placeholder="you@email.com"
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      value={ticketForm.phone}
+                      onChange={e => setTicketForm({ ...ticketForm, phone: e.target.value })}
+                      placeholder="+91 98989 12345"
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
+                    />
+                  </div>
                 </div>
 
                 <div>
                   <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">
-                    Order ID (Optional)
+                    Related Order ID (Optional)
                   </label>
                   <input
                     type="text"
@@ -434,32 +586,46 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">
-                    Detailed Message
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold uppercase text-gray-400 block">
+                      Detailed Issue Description <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[9px] text-orange-500 font-bold">Forwarded to inbox</span>
+                  </div>
                   <textarea
                     required
-                    rows={3}
+                    rows={4}
                     value={ticketForm.message}
                     onChange={e => setTicketForm({ ...ticketForm, message: e.target.value })}
-                    placeholder="Describe what you need help with..."
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
+                    placeholder="Please explain the issue thoroughly (e.g. item condition, delivery delay, billing discrepancy)..."
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-xs leading-relaxed"
                   ></textarea>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
+                    disabled={isSubmittingTicket}
                     onClick={() => setShowTicketModal(false)}
-                    className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl"
+                    className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-5 py-2 rounded-xl shadow-md flex items-center gap-1.5"
+                    disabled={isSubmittingTicket}
+                    className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-md flex items-center gap-1.5 transition-all transform active:scale-95 disabled:opacity-50"
                   >
-                    <Send className="w-3.5 h-3.5" /> Submit Ticket
+                    {isSubmittingTicket ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        Forwarding to Support...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" /> Submit & Forward to Outlook
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -479,6 +645,12 @@ export const FaqDashboard: React.FC<FaqDashboardProps> = ({
           rawPhoneNumber={customerCareRawPhone}
         />
       )}
+
+      {/* Direct Email Support Desk Modal */}
+      <EmailSupportModal
+        isOpen={showEmailSupportModal}
+        onClose={() => setShowEmailSupportModal(false)}
+      />
     </div>
   );
 };

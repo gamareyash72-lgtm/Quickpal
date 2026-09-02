@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Order } from '../types';
 import { printOrderReceipt } from '../utils/printReceipt';
+import { orderAlertSound } from '../utils/orderAlertSound';
 import {
   Store,
   CheckCircle2,
@@ -16,18 +17,49 @@ import {
   AlertCircle,
   CheckCircle,
   Users,
-  Printer
+  Printer,
+  Volume2,
+  VolumeX,
+  BellRing
 } from 'lucide-react';
 
 export const StoreStaffDashboard: React.FC = () => {
   const { orders, storeAcceptOrder } = useApp();
   const [activeTab, setActiveTab] = useState<'pending' | 'accepted' | 'history'>('pending');
+  const [isSoundMuted, setIsSoundMuted] = useState<boolean>(!orderAlertSound.isSoundActive());
 
   // Orders waiting for store stock confirmation
   const pendingOrders = orders.filter(o => {
     const s = (o?.status || 'placed').toLowerCase().trim();
     return s === 'placed' || s === 'pending' || !s;
   });
+
+  // Sound chime when new store orders arrive
+  useEffect(() => {
+    if (pendingOrders.length > 0 && !isSoundMuted) {
+      orderAlertSound.playNotificationBell();
+    }
+  }, [pendingOrders.length, isSoundMuted]);
+
+  const handleToggleSound = () => {
+    const nextState = orderAlertSound.toggleSound();
+    setIsSoundMuted(!nextState);
+  };
+
+  const handleTestBell = () => {
+    orderAlertSound.unlockAudio();
+    orderAlertSound.playNotificationBell();
+  };
+
+  const handleTestChime = () => {
+    orderAlertSound.unlockAudio();
+    orderAlertSound.playSingleChime();
+  };
+
+  const handleTestAccept = () => {
+    orderAlertSound.unlockAudio();
+    orderAlertSound.playOrderAcceptedSound();
+  };
 
   // Orders accepted by store, in progress
   const activeAcceptedOrders = orders.filter(o => {
@@ -80,9 +112,45 @@ export const StoreStaffDashboard: React.FC = () => {
           </p>
         </div>
 
-        <div className="bg-slate-800/90 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-700 text-xs font-bold shrink-0">
-          <span className="text-gray-400 text-[10px] uppercase block font-black">Pending Verification</span>
-          <span className="text-xl font-black text-amber-400">{pendingOrders.length} New Orders</span>
+        <div className="flex items-center gap-3">
+          {/* Sound Mute / Unmute & Test Ringtone */}
+          <div className="flex items-center gap-1.5 bg-slate-800/90 backdrop-blur-md p-1.5 rounded-2xl border border-slate-700">
+            <button
+              onClick={handleToggleSound}
+              title={isSoundMuted ? "Unmute Order Alert Ringtone" : "Mute Order Alert Ringtone"}
+              className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                !isSoundMuted
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'bg-transparent text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {!isSoundMuted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              <span className="text-[10px] font-black uppercase hidden sm:inline">
+                {!isSoundMuted ? 'Sound ON' : 'Muted'}
+              </span>
+            </button>
+
+            <button
+              onClick={handleTestBell}
+              title="Test Notification Bell Sound"
+              className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-[10px] font-black uppercase border border-slate-600 transition-all active:scale-95 flex items-center gap-1"
+            >
+              🔔 Bell
+            </button>
+
+            <button
+              onClick={handleTestChime}
+              title="Test Order Alert Sound"
+              className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-[10px] font-black uppercase border border-slate-600 transition-all active:scale-95"
+            >
+              Ring
+            </button>
+          </div>
+
+          <div className="bg-slate-800/90 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-700 text-xs font-bold shrink-0">
+            <span className="text-gray-400 text-[10px] uppercase block font-black">Pending Verification</span>
+            <span className="text-xl font-black text-amber-400">{pendingOrders.length} New Orders</span>
+          </div>
         </div>
       </div>
 
@@ -221,8 +289,12 @@ export const StoreStaffDashboard: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => storeAcceptOrder(ord.id)}
-                    className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white font-black px-6 py-3 rounded-2xl text-xs shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95"
+                    onClick={() => {
+                      orderAlertSound.unlockAudio();
+                      orderAlertSound.playOrderAcceptedSound();
+                      storeAcceptOrder(ord.id);
+                    }}
+                    className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white font-black px-6 py-3 rounded-2xl text-xs shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     Accept Order & Confirm All Products Available

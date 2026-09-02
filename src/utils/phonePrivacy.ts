@@ -4,6 +4,9 @@
  */
 
 export const DEFAULT_CUSTOMER_CARE_PHONE = '932605337';
+export const DEFAULT_CUSTOMER_CARE_EMAIL = 'quickpal.in@outlook.com';
+export const DEFAULT_WHATSAPP_SUPPORT_URL = 'https://chat.whatsapp.com/KKeOzLDZWWBGjDv2hSBsWs?s=sh&p=i&mlu=0&ilr=4';
+export const DEFAULT_INSTAGRAM_URL = 'https://www.instagram.com/quickpal.in?utm_source=qr';
 
 export function isValidIndianMobile(phone?: string | null): boolean {
   if (!phone) return false;

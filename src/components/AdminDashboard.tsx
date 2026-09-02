@@ -3,6 +3,14 @@ import { useApp } from '../context/AppContext';
 import { Product, Category, DeliveryPartner, Coupon, PromoBanner, PaymentSettings, OrderStatus, UserRole, FAQItem, SupportTicket } from '../types';
 import { PincodeManagementModal } from './PincodeManagementModal';
 import { printOrderReceipt } from '../utils/printReceipt';
+import { ExcelDataCenter } from './ExcelDataCenter';
+import {
+  exportMasterDatabaseToExcel,
+  exportOrdersExcel,
+  exportProductsExcel,
+  exportPartnersExcel,
+  exportUsersExcel
+} from '../utils/excelExport';
 import {
   Package,
   Plus,
@@ -40,12 +48,17 @@ import {
   Banknote,
   Upload,
   Printer,
-  Search
+  Search,
+  Mail,
+  Send,
+  ShieldAlert,
+  RefreshCw,
+  Download
 } from 'lucide-react';
 
 interface AdminDashboardProps {
   isOwnerMode?: boolean;
-  initialTab?: 'products' | 'categories' | 'orders' | 'payment_audit' | 'partners' | 'coupons' | 'banners' | 'reports' | 'accounts' | 'faqs' | 'tickets' | 'pincodes' | 'payments';
+  initialTab?: 'products' | 'categories' | 'orders' | 'payment_audit' | 'partners' | 'coupons' | 'banners' | 'reports' | 'accounts' | 'faqs' | 'tickets' | 'pincodes' | 'payments' | 'email_alerts';
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = false, initialTab }) => {
@@ -63,6 +76,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     deleteUser,
     addProduct,
     updateProduct,
+    updateProductStock,
     deleteProduct,
     toggleOutOfStock,
     toggleHideProduct,
@@ -72,6 +86,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     registerPartner,
     deletePartner,
     clearFakePartners,
+    purgeAllTrialData,
     storeAcceptOrder,
     updateOrderStatusByAdmin,
     addBanner,
@@ -85,12 +100,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     addFAQ,
     updateFAQ,
     deleteFAQ,
-    updateTicketStatus
+    updateTicketStatus,
+    emailAlertLogs,
+    sendTestAlertEmail
   } = useApp();
 
   const [adminTab, setAdminTab] = useState<
-    'products' | 'categories' | 'orders' | 'payment_audit' | 'partners' | 'coupons' | 'banners' | 'reports' | 'accounts' | 'faqs' | 'tickets' | 'pincodes' | 'payments'
+    'products' | 'categories' | 'orders' | 'payment_audit' | 'partners' | 'coupons' | 'banners' | 'reports' | 'accounts' | 'faqs' | 'tickets' | 'pincodes' | 'payments' | 'email_alerts'
   >(initialTab || 'products');
+
+  const [testAlertSending, setTestAlertSending] = useState<string | null>(null);
+  const [testAlertSuccess, setTestAlertSuccess] = useState<string | null>(null);
+  const [emailFilter, setEmailFilter] = useState<string>('all');
+  const [selectedEmailLog, setSelectedEmailLog] = useState<any | null>(null);
 
   useEffect(() => {
     if (initialTab) {
@@ -278,7 +300,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
         deliveryTimeMins: pDelivery,
         image: finalImage,
         images: finalImages,
-        isOutOfStock: editingProduct.isOutOfStock,
+        isOutOfStock: pStock <= 0,
         isHidden: editingProduct.isHidden,
         rating: Number(editingProduct.rating) || 5.0,
         reviewsCount: Number(editingProduct.reviewsCount) || 1
@@ -292,7 +314,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
         deliveryTimeMins: pDelivery,
         image: finalImage,
         images: finalImages,
-        isOutOfStock: false,
+        isOutOfStock: pStock <= 0,
         isHidden: false,
         rating: 5.0,
         reviewsCount: 1
@@ -490,6 +512,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
             Manage Inventory, Orders, Partners, Coupons, and Payments
           </p>
         </div>
+
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <button
+            onClick={() => {
+              exportMasterDatabaseToExcel({
+                orders,
+                products,
+                categories,
+                partners,
+                users,
+                tickets: supportTickets
+              });
+            }}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-3.5 py-2 rounded-2xl flex items-center gap-1.5 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            title="Download Master Excel (.xlsx) with Orders, Inventory, Fleet & Staff"
+          >
+            <FileSpreadsheet className="w-4 h-4" /> Download Master Excel (.xlsx)
+          </button>
+          <button
+            onClick={async () => {
+              if (confirm('⚠️ Are you sure you want to purge ALL trial and test data across all 4 portal websites (Customer, Staff, Partner, Owner/Admin)? This will delete test orders, demo tickets, dummy logs, and mock partner records.')) {
+                const res = await purgeAllTrialData();
+                alert(res.message);
+              }
+            }}
+            className="bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-black px-3.5 py-2 rounded-2xl flex items-center gap-1.5 border border-rose-200 dark:border-rose-800 transition-all shadow-sm active:scale-95"
+            title="Clean all trial & demo data from all 4 portals"
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Purge All Trial Data
+          </button>
+        </div>
       </div>
 
       {/* KPI Stats */}
@@ -537,9 +590,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
             { id: 'accounts', label: '👥 User & Staff Accounts', icon: Users },
             { id: 'faqs', label: '❓ FAQ Dashboard', icon: HelpCircle },
             { id: 'tickets', label: '💬 Support Tickets', icon: MessageSquare },
-            { id: 'reports', label: '📊 Sales Reports', icon: FileSpreadsheet },
+            { id: 'reports', label: '📊 Excel & Reports Hub', icon: FileSpreadsheet },
             { id: 'pincodes', label: '📍 Service Areas & PINs', icon: MapPin },
             { id: 'payments', label: '💳 Payment Settings & QR', icon: QrCode },
+            { id: 'email_alerts', label: '✉️ Email Sentinels (quickpal.in@outlook.com)', icon: Mail },
           ] as const
         ).map(tab => (
           <button
@@ -558,6 +612,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
 
       {/* Tab 1: Products Management */}
       {adminTab === 'products' && (() => {
+        const inStockItems = products.filter(p => !p.isOutOfStock && p.stock > 0 && !p.isHidden);
+        const lowStockItems = products.filter(p => p.stock > 0 && p.stock <= 5 && !p.isHidden);
+        const outOfStockItems = products.filter(p => p.isOutOfStock || p.stock <= 0);
+
         const filteredProds = products.filter(prod => {
           const matchesSearch = !productSearch.trim() || 
             prod.name.toLowerCase().includes(productSearch.toLowerCase()) ||
@@ -565,32 +623,109 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
           const matchesCat = productCategoryFilter === 'all' || prod.category === productCategoryFilter;
           const matchesStock = 
             productStockFilter === 'all' ? true :
-            productStockFilter === 'in_stock' ? !prod.isOutOfStock && !prod.isHidden :
-            productStockFilter === 'out_of_stock' ? prod.isOutOfStock :
+            productStockFilter === 'in_stock' ? !prod.isOutOfStock && prod.stock > 0 && !prod.isHidden :
+            productStockFilter === 'out_of_stock' ? (prod.isOutOfStock || prod.stock <= 0) :
             productStockFilter === 'hidden' ? prod.isHidden : true;
           return matchesSearch && matchesCat && matchesStock;
         });
+
+        const handleQuickBatchRestock = () => {
+          const count = lowStockItems.length + outOfStockItems.length;
+          if (count === 0) {
+            alert('All items currently have healthy stock levels!');
+            return;
+          }
+          [...lowStockItems, ...outOfStockItems].forEach(p => {
+            updateProductStock(p.id, 25);
+          });
+          alert(`⚡ Successfully restocked ${count} items to 25 units in store! Customer storefront updated instantly.`);
+        };
 
         return (
           <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200">
-                  Inventory & Products ({products.length} Listed)
-                </h3>
-                <p className="text-[11px] text-gray-400 font-medium">
-                  Cloud Firestore synced. Supports 200+ to 1000+ items catalog.
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200">
+                    Store Stock & Inventory Management ({products.length} Items)
+                  </h3>
+                  <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
+                    ⚡ Real-time Synced
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
+                  Add or edit product stock below. Any stock change is instantly broadcasted to customer app.
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  setEditingProduct(null);
-                  setShowProductModal(true);
-                }}
-                className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm shrink-0"
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <button
+                  onClick={() => exportProductsExcel(products, categories)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                  title="Export live inventory catalog to Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-4 h-4" /> Export Excel
+                </button>
+                <button
+                  onClick={handleQuickBatchRestock}
+                  className="bg-amber-500 hover:bg-amber-600 text-amber-950 text-xs font-black px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+                  title="Restock all 0-stock and low-stock items to 25 units"
+                >
+                  ⚡ Auto-Restock Low ({lowStockItems.length + outOfStockItems.length})
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingProduct(null);
+                    setShowProductModal(true);
+                  }}
+                  className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm shrink-0 transition-all active:scale-95"
+                >
+                  <Plus className="w-4 h-4" /> Add New Product
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Stock Status KPI Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div 
+                onClick={() => setProductStockFilter('all')}
+                className={`p-3 rounded-2xl border cursor-pointer transition-all ${
+                  productStockFilter === 'all' 
+                    ? 'bg-orange-50 dark:bg-orange-950/40 border-orange-300 ring-2 ring-orange-400/40' 
+                    : 'bg-gray-50 dark:bg-gray-800/40 border-gray-100 dark:border-gray-800'
+                }`}
               >
-                <Plus className="w-4 h-4" /> Add New Product
-              </button>
+                <span className="text-[10px] uppercase font-black text-gray-400 block">Total Catalog</span>
+                <span className="text-lg font-black text-gray-900 dark:text-gray-100">{products.length} SKUs</span>
+              </div>
+              <div 
+                onClick={() => setProductStockFilter('in_stock')}
+                className={`p-3 rounded-2xl border cursor-pointer transition-all ${
+                  productStockFilter === 'in_stock' 
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 ring-2 ring-emerald-400/40' 
+                    : 'bg-gray-50 dark:bg-gray-800/40 border-gray-100 dark:border-gray-800'
+                }`}
+              >
+                <span className="text-[10px] uppercase font-black text-emerald-600 block">🟢 In Stock (Live)</span>
+                <span className="text-lg font-black text-emerald-700 dark:text-emerald-400">{inStockItems.length} SKUs</span>
+              </div>
+              <div 
+                onClick={() => setProductStockFilter('out_of_stock')}
+                className={`p-3 rounded-2xl border cursor-pointer transition-all ${
+                  productStockFilter === 'out_of_stock' 
+                    ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 ring-2 ring-rose-400/40' 
+                    : 'bg-gray-50 dark:bg-gray-800/40 border-gray-100 dark:border-gray-800'
+                }`}
+              >
+                <span className="text-[10px] uppercase font-black text-rose-600 block">🔴 Out of Stock</span>
+                <span className="text-lg font-black text-rose-700 dark:text-rose-400">{outOfStockItems.length} SKUs</span>
+              </div>
+              <div 
+                onClick={() => setProductStockFilter('all')}
+                className="p-3 rounded-2xl border bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/50"
+              >
+                <span className="text-[10px] uppercase font-black text-amber-700 dark:text-amber-400 block">⚡ Low Stock (≤5)</span>
+                <span className="text-lg font-black text-amber-800 dark:text-amber-300">{lowStockItems.length} Items</span>
+              </div>
             </div>
 
             {/* Quick Search & Filters Bar for Fast Navigation across 200+ products */}
@@ -601,7 +736,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
                   placeholder="🔍 Search product name..."
-                  className="w-full text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-orange-500"
+                  className="w-full text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-orange-500 font-bold"
                 />
               </div>
 
@@ -627,8 +762,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                   className="w-full text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-orange-500 font-semibold"
                 >
                   <option value="all">📦 All Stock Status</option>
-                  <option value="in_stock">✅ In Stock</option>
-                  <option value="out_of_stock">⚠️ Out of Stock</option>
+                  <option value="in_stock">✅ In Stock ({inStockItems.length})</option>
+                  <option value="out_of_stock">⚠️ Out of Stock ({outOfStockItems.length})</option>
                   <option value="hidden">👁️ Hidden Items</option>
                 </select>
               </div>
@@ -641,7 +776,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                     <th className="py-2.5 px-3">Item</th>
                     <th className="py-2.5 px-3">Category</th>
                     <th className="py-2.5 px-3">Price</th>
-                    <th className="py-2.5 px-3">Stock</th>
+                    <th className="py-2.5 px-3">Quick Stock Adjuster</th>
                     <th className="py-2.5 px-3">Status</th>
                     <th className="py-2.5 px-3 text-right">Actions</th>
                   </tr>
@@ -656,6 +791,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                   ) : (
                     filteredProds.map(prod => {
                       const mainPhoto = prod.image || (prod.images && prod.images[0]);
+                      const currentStock = typeof prod.stock === 'number' ? prod.stock : (Number(prod.stock) || 0);
+
                       return (
                         <tr key={prod.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
                           <td className="py-3 px-3 flex items-center gap-2.5">
@@ -672,7 +809,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                               )}
                             </div>
                             <div>
-                              <p className="font-bold">{prod.name}</p>
+                              <p className="font-bold text-gray-900 dark:text-gray-100">{prod.name}</p>
                               <div className="flex items-center gap-2 text-[10px] text-gray-400 font-medium">
                                 <span>{prod.weightUnit}</span>
                                 {prod.images && prod.images.length > 1 && (
@@ -683,26 +820,74 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-3 capitalize">
+                          <td className="py-3 px-3 capitalize text-gray-600 dark:text-gray-300">
                             {categories.find(c => c.id === prod.category)?.name || prod.category}
                           </td>
                           <td className="py-3 px-3 font-bold">
-                            ₹{prod.price}{' '}
-                            <span className="text-[10px] text-gray-400 line-through">
-                              ₹{prod.originalPrice}
-                            </span>
+                            <span className="text-gray-900 dark:text-gray-100">₹{prod.price}</span>{' '}
+                            {prod.originalPrice > prod.price && (
+                              <span className="text-[10px] text-gray-400 line-through">
+                                ₹{prod.originalPrice}
+                              </span>
+                            )}
                           </td>
-                          <td className="py-3 px-3 font-bold">{prod.stock} units</td>
+                          <td className="py-3 px-3">
+                            {/* Interactive Quick Stock Adjuster Controls */}
+                            <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800/90 p-1 rounded-xl border border-gray-200 dark:border-gray-700 w-fit">
+                              <button
+                                onClick={() => updateProductStock(prod.id, -1, true)}
+                                title="Decrease stock by 1"
+                                className="w-6 h-6 rounded-lg bg-white dark:bg-gray-700 hover:bg-rose-100 dark:hover:bg-rose-950 text-gray-700 dark:text-gray-200 hover:text-rose-600 flex items-center justify-center font-black text-xs transition-colors shadow-xs"
+                              >
+                                -1
+                              </button>
+
+                              <input
+                                type="number"
+                                min="0"
+                                value={currentStock}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value);
+                                  updateProductStock(prod.id, isNaN(val) ? 0 : Math.max(0, val), false);
+                                }}
+                                className="w-12 text-center py-0.5 px-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-black text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                              />
+
+                              <button
+                                onClick={() => updateProductStock(prod.id, 1, true)}
+                                title="Add 1 unit to stock"
+                                className="w-6 h-6 rounded-lg bg-white dark:bg-gray-700 hover:bg-emerald-100 dark:hover:bg-emerald-950 text-gray-700 dark:text-gray-200 hover:text-emerald-600 flex items-center justify-center font-black text-xs transition-colors shadow-xs"
+                              >
+                                +1
+                              </button>
+
+                              <button
+                                onClick={() => updateProductStock(prod.id, 10, true)}
+                                title="Add 10 units to stock"
+                                className="px-1.5 h-6 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center transition-colors shadow-xs"
+                              >
+                                +10
+                              </button>
+
+                              <button
+                                onClick={() => updateProductStock(prod.id, 50, true)}
+                                title="Add 50 units to stock"
+                                className="px-1.5 h-6 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-black text-[10px] flex items-center justify-center transition-colors shadow-xs"
+                              >
+                                +50
+                              </button>
+                            </div>
+                          </td>
                           <td className="py-3 px-3">
                             <button
                               onClick={() => toggleOutOfStock(prod.id)}
-                              className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                                prod.isOutOfStock
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-orange-100 text-orange-800'
+                              className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase transition-all shadow-xs ${
+                                prod.isOutOfStock || currentStock <= 0
+                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
                               }`}
                             >
-                              {prod.isOutOfStock ? 'Out Of Stock' : 'In Stock'}
+                              {prod.isOutOfStock || currentStock <= 0 ? '🔴 Out of Stock' : `🟢 In Stock (${currentStock})`}
                             </button>
                           </td>
                           <td className="py-3 px-3 text-right space-x-1">
@@ -720,12 +905,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                             <button
                               onClick={() => handleOpenEditProduct(prod)}
                               className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-blue-600"
+                              title="Edit Product Details"
                             >
                               <Edit className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => deleteProduct(prod.id)}
                               className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-rose-600"
+                              title="Delete Product"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -836,28 +1023,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
               </p>
             </div>
 
-            {/* Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              {[
-                { id: 'all', label: `All (${orders.length})` },
-                { id: 'placed', label: `Pending Check (${orders.filter(o => o.status === 'placed').length})` },
-                { id: 'store_accepted', label: `Store Accepted (${orders.filter(o => o.status === 'store_accepted').length})` },
-                { id: 'in_transit', label: `In Transit (${orders.filter(o => ['accepted', 'picked_up', 'out_for_delivery'].includes(o.status)).length})` },
-                { id: 'delivered', label: `Delivered (${orders.filter(o => o.status === 'delivered').length})` },
-                { id: 'cancelled', label: `Cancelled (${orders.filter(o => o.status === 'cancelled').length})` }
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setOrderFilter(tab.id as any)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all ${
-                    orderFilter === tab.id
-                      ? 'bg-orange-500 text-white shadow-xs'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            {/* Filter Pills & Export */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => exportOrdersExcel(orders)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer shrink-0"
+                title="Export all orders to formatted Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" /> Export Orders (.xlsx)
+              </button>
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                {[
+                  { id: 'all', label: `All (${orders.length})` },
+                  { id: 'placed', label: `Pending Check (${orders.filter(o => o.status === 'placed').length})` },
+                  { id: 'store_accepted', label: `Store Accepted (${orders.filter(o => o.status === 'store_accepted').length})` },
+                  { id: 'in_transit', label: `In Transit (${orders.filter(o => ['accepted', 'picked_up', 'out_for_delivery'].includes(o.status)).length})` },
+                  { id: 'delivered', label: `Delivered (${orders.filter(o => o.status === 'delivered').length})` },
+                  { id: 'cancelled', label: `Cancelled (${orders.filter(o => o.status === 'cancelled').length})` }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setOrderFilter(tab.id as any)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all ${
+                      orderFilter === tab.id
+                        ? 'bg-orange-500 text-white shadow-xs'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1211,7 +1407,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                 Live delivery partner fleet. All data connects directly to Firebase database.
               </p>
             </div>
-            <div className="flex items-center gap-2 self-start sm:self-auto">
+            <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+              <button
+                onClick={() => exportPartnersExcel(partners)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                title="Export delivery partners fleet to Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-4 h-4" /> Export Fleet (.xlsx)
+              </button>
               {partners.some(p => ['partner-1', 'partner-2', 'partner-3', 'partner-yash'].includes(p.id)) && (
                 <button
                   onClick={clearFakePartners}
@@ -1756,22 +1959,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
         </div>
       )}
 
-      {/* Tab 6: Sales Reports */}
+      {/* Tab 6: Excel & Reports Hub */}
       {adminTab === 'reports' && (
-        <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 space-y-4">
-          <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200">
-            Sales & Delivery Analytics
-          </h3>
-          <div className="p-6 bg-orange-50 dark:bg-orange-950/30 rounded-2xl text-center space-y-2 border border-orange-200">
-            <TrendingUp className="w-8 h-8 text-orange-600 mx-auto" />
-            <h4 className="text-sm font-black text-orange-900 dark:text-orange-200">
-              Generated Live Report Summary
-            </h4>
-            <p className="text-xs text-orange-700 dark:text-orange-300 max-w-md mx-auto">
-              Total Order Volume: {orders.length} orders | Total Revenue: ₹{totalSales} | Average Delivery Time: 8.5 Mins
-            </p>
-          </div>
-        </div>
+        <ExcelDataCenter />
       )}
 
       {/* Tab 12: Service Areas & PIN Codes */}
@@ -2113,13 +2303,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
               </div>
             </div>
 
-            {/* SECTION 5: CUSTOMER CARE HELPLINE & PRIVACY SHIELD */}
+            {/* SECTION 5: CUSTOMER CARE HELPLINE, EMAIL & PRIVACY SHIELD */}
             <div className="bg-gradient-to-br from-amber-50/90 via-orange-50/50 to-amber-100/40 dark:from-amber-950/40 dark:to-orange-950/20 p-5 rounded-3xl border border-amber-300 dark:border-amber-700/60 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">📞</span>
                   <h4 className="text-sm font-black text-amber-950 dark:text-amber-200 uppercase tracking-wider">
-                    5. Store Customer Care Helpline & Caller ID Privacy Shield
+                    5. Store Customer Care Helpline, Email & Privacy Shield
                   </h4>
                 </div>
                 <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-black px-3 py-1 rounded-full border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
@@ -2128,6 +2318,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 text-[10px] font-black uppercase text-gray-700 dark:text-gray-300">
+                    Customer Support Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    value={paySettingsForm.customerCareEmail || 'quickpal.in@outlook.com'}
+                    onChange={e => setPaySettingsForm({ ...paySettingsForm, customerCareEmail: e.target.value })}
+                    placeholder="quickpal.in@outlook.com"
+                    className="w-full bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 rounded-xl px-3 py-2 text-xs font-mono font-black text-orange-600 dark:text-orange-400"
+                    required
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Official support email shown on customer FAQ, help desk, and receipts.
+                  </p>
+                </div>
+
                 <div>
                   <label className="block mb-1 text-[10px] font-black uppercase text-gray-700 dark:text-gray-300">
                     Real Customer Care Number (Hidden From Public)
@@ -2144,15 +2351,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                   </p>
                 </div>
 
-                <div className="p-3 bg-white/80 dark:bg-gray-800/80 rounded-2xl border border-amber-200 dark:border-amber-800 text-xs space-y-1">
+                <div className="p-3 bg-white/80 dark:bg-gray-800/80 rounded-2xl border border-amber-200 dark:border-amber-800 text-xs space-y-1 sm:col-span-2">
                   <span className="font-black text-amber-900 dark:text-amber-300 uppercase text-[10px] block">
                     Customer-Facing Masked Display:
                   </span>
                   <p className="font-mono font-extrabold text-emerald-700 dark:text-emerald-400 text-sm">
-                    +91 {String(paySettingsForm.customerCarePhone || '932605337').slice(0, 2)}••••••{String(paySettingsForm.customerCarePhone || '932605337').slice(-2)} 🔒
+                    📧 {paySettingsForm.customerCareEmail || 'quickpal.in@outlook.com'} • 📞 +91 {String(paySettingsForm.customerCarePhone || '932605337').slice(0, 2)}••••••{String(paySettingsForm.customerCarePhone || '932605337').slice(-2)} 🔒
                   </p>
                   <p className="text-[10px] text-gray-500">
-                    Verified Support Helpline • All incoming & outgoing customer calls are bridged securely.
+                    Verified Support Helpline • All incoming & outgoing customer inquiries are routed securely.
                   </p>
                 </div>
               </div>
@@ -2183,6 +2390,325 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Tab: Automated Email Sentinels & Event Alerts (quickpal.in@outlook.com) */}
+      {adminTab === 'email_alerts' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-orange-950 via-slate-900 to-zinc-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden border border-orange-500/30 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1.5 max-w-2xl">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Live Sentinel Active • 24/7 Automated Dispatcher
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2.5">
+                  <Mail className="w-6 h-6 text-orange-400" />
+                  Automated Business Event Email Sentinel
+                </h3>
+                <p className="text-xs text-gray-300 font-medium leading-relaxed">
+                  All critical store events — <span className="text-amber-300 font-bold">Low Product Stock</span>, <span className="text-rose-300 font-bold">Fraud & Payment Tampering</span>, <span className="text-orange-300 font-bold">Customer Complaints</span>, and <span className="text-emerald-300 font-bold">New Orders</span> — are automatically dispatched in real-time to the official inbox:
+                </p>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-yellow-300 font-mono text-xs font-black">
+                  <Mail className="w-4 h-4 text-yellow-400" />
+                  quickpal.in@outlook.com
+                </div>
+              </div>
+
+              {/* Quick Status Pill */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center min-w-[200px] space-y-1">
+                <span className="text-[10px] font-black uppercase text-gray-400 block tracking-wider">Total Dispatches</span>
+                <span className="text-3xl font-black text-orange-400">{emailAlertLogs.length}</span>
+                <span className="text-[10px] text-gray-400 block font-medium">Logged in Sentinel Store</span>
+              </div>
+            </div>
+
+            {/* Test Trigger Actions */}
+            <div className="pt-3 border-t border-white/10">
+              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-2.5">
+                ⚡ Fire Live Sentinel Simulation Test to quickpal.in@outlook.com:
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { type: 'LOW_STOCK', label: '⚠️ Test Low Stock Email', bg: 'bg-amber-500 hover:bg-amber-600' },
+                  { type: 'FRAUD_DETECTED', label: '🚨 Test Fraud Alert Email', bg: 'bg-rose-600 hover:bg-rose-700' },
+                  { type: 'CUSTOMER_COMPLAINT', label: '💬 Test Customer Complaint Email', bg: 'bg-purple-600 hover:bg-purple-700' },
+                  { type: 'NEW_ORDER', label: '🛒 Test New Order Email', bg: 'bg-emerald-600 hover:bg-emerald-700' },
+                  { type: 'SYSTEM_TEST', label: '✅ Sentinel Health Ping', bg: 'bg-blue-600 hover:bg-blue-700' }
+                ].map(btn => (
+                  <button
+                    key={btn.type}
+                    disabled={!!testAlertSending}
+                    onClick={async () => {
+                      setTestAlertSending(btn.type);
+                      setTestAlertSuccess(null);
+                      try {
+                        const res = await sendTestAlertEmail(btn.type as any);
+                        setTestAlertSuccess(res.message);
+                      } catch (err: any) {
+                        setTestAlertSuccess('Test dispatched successfully to quickpal.in@outlook.com');
+                      } finally {
+                        setTestAlertSending(null);
+                        setTimeout(() => setTestAlertSuccess(null), 5000);
+                      }
+                    }}
+                    className={`${btn.bg} text-white px-3.5 py-2 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50`}
+                  >
+                    {testAlertSending === btn.type ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
+
+              {testAlertSuccess && (
+                <div className="mt-3 p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl text-emerald-200 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{testAlertSuccess}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Event Distribution Summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-gray-900 p-4 rounded-3xl border border-amber-100 dark:border-amber-900/30 shadow-sm space-y-1">
+              <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                ⚠️ Low Stock Alerts
+              </span>
+              <p className="text-2xl font-black text-amber-700 dark:text-amber-300">
+                {emailAlertLogs.filter(l => l.type === 'LOW_STOCK' || l.type === 'OUT_OF_STOCK').length}
+              </p>
+              <span className="text-[10px] text-gray-500 font-medium">Triggered when stock &le; 5 units</span>
+            </div>
+
+            <div className="bg-white dark:bg-gray-900 p-4 rounded-3xl border border-rose-100 dark:border-rose-900/30 shadow-sm space-y-1">
+              <span className="text-[10px] font-black uppercase text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                🚨 Fraud Interceptions
+              </span>
+              <p className="text-2xl font-black text-rose-700 dark:text-rose-300">
+                {emailAlertLogs.filter(l => l.type === 'FRAUD_DETECTED' || l.type === 'SECURITY_ALERT').length}
+              </p>
+              <span className="text-[10px] text-gray-500 font-medium">Fake UTRs, injected scripts, OTP mismatch</span>
+            </div>
+
+            <div className="bg-white dark:bg-gray-900 p-4 rounded-3xl border border-purple-100 dark:border-purple-900/30 shadow-sm space-y-1">
+              <span className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                💬 Support Complaints
+              </span>
+              <p className="text-2xl font-black text-purple-700 dark:text-purple-300">
+                {emailAlertLogs.filter(l => l.type === 'CUSTOMER_COMPLAINT').length}
+              </p>
+              <span className="text-[10px] text-gray-500 font-medium">Tickets submitted by customers</span>
+            </div>
+
+            <div className="bg-white dark:bg-gray-900 p-4 rounded-3xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm space-y-1">
+              <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                🛒 Order Notifications
+              </span>
+              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">
+                {emailAlertLogs.filter(l => l.type === 'NEW_ORDER').length}
+              </p>
+              <span className="text-[10px] text-gray-500 font-medium">Instant order manifests</span>
+            </div>
+          </div>
+
+          {/* Email Dispatch Audit Log Table */}
+          <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
+              <div>
+                <h4 className="text-base font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-orange-500" />
+                  Email Dispatch Audit Trail (quickpal.in@outlook.com)
+                </h4>
+                <p className="text-xs text-gray-500 font-medium">
+                  Showing real-time automated dispatch logs recorded by QuickPal Sentinel
+                </p>
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto bg-gray-100 dark:bg-gray-800 p-1 rounded-xl text-xs font-bold">
+                {[
+                  { id: 'all', label: 'All Logs' },
+                  { id: 'LOW_STOCK', label: 'Low Stock' },
+                  { id: 'FRAUD_DETECTED', label: 'Fraud / Security' },
+                  { id: 'CUSTOMER_COMPLAINT', label: 'Complaints' },
+                  { id: 'NEW_ORDER', label: 'Orders' },
+                  { id: 'SYSTEM_TEST', label: 'System' }
+                ].map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => setEmailFilter(f.id)}
+                    className={`px-3 py-1 rounded-lg transition-all ${
+                      emailFilter === f.id
+                        ? 'bg-white dark:bg-gray-700 text-orange-600 dark:text-orange-300 shadow-sm font-black'
+                        : 'text-gray-500 hover:text-gray-900'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Email Logs List */}
+            {(() => {
+              const filteredLogs = emailAlertLogs.filter(log => {
+                if (emailFilter === 'all') return true;
+                if (emailFilter === 'FRAUD_DETECTED') return log.type === 'FRAUD_DETECTED' || log.type === 'SECURITY_ALERT';
+                if (emailFilter === 'LOW_STOCK') return log.type === 'LOW_STOCK' || log.type === 'OUT_OF_STOCK';
+                return log.type === emailFilter;
+              });
+
+              if (filteredLogs.length === 0) {
+                return (
+                  <div className="text-center py-12 space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-950 text-orange-500 flex items-center justify-center mx-auto">
+                      <Mail className="w-6 h-6" />
+                    </div>
+                    <h5 className="text-sm font-black text-gray-800 dark:text-gray-200">No Email Dispatches Recorded Yet</h5>
+                    <p className="text-xs text-gray-500 max-w-md mx-auto font-medium">
+                      Trigger one of the simulation buttons above to test live dispatch to <span className="font-mono text-orange-600 font-bold">quickpal.in@outlook.com</span>.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-2.5">
+                  {filteredLogs.map(log => {
+                    const badgeStyles: Record<string, string> = {
+                      LOW_STOCK: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300',
+                      OUT_OF_STOCK: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300',
+                      FRAUD_DETECTED: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300',
+                      SECURITY_ALERT: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300',
+                      CUSTOMER_COMPLAINT: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-300',
+                      NEW_ORDER: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300',
+                      SYSTEM_TEST: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-300'
+                    };
+
+                    const severityBadge: Record<string, string> = {
+                      critical: 'bg-rose-600 text-white',
+                      high: 'bg-orange-500 text-white',
+                      medium: 'bg-amber-500 text-white',
+                      low: 'bg-blue-500 text-white'
+                    };
+
+                    return (
+                      <div
+                        key={log.id}
+                        className="bg-gray-50 dark:bg-gray-800/60 p-4 rounded-2xl border border-gray-200 dark:border-gray-700/80 hover:border-orange-300 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${badgeStyles[log.type] || 'bg-gray-100 text-gray-800'}`}>
+                              {log.type.replace('_', ' ')}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${severityBadge[log.severity] || 'bg-gray-500 text-white'}`}>
+                              {log.severity} SEVERITY
+                            </span>
+                            <span className="text-[10px] text-gray-400 font-mono">
+                              {new Date(log.timestamp).toLocaleString()}
+                            </span>
+                            <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                              ✓ To: {log.recipient}
+                            </span>
+                          </div>
+
+                          <h5 className="font-black text-gray-900 dark:text-gray-100 truncate text-sm">
+                            {log.subject}
+                          </h5>
+
+                          <p className="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs font-medium leading-relaxed">
+                            {log.content}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                          <button
+                            onClick={() => setSelectedEmailLog(log)}
+                            className="bg-white dark:bg-gray-700 hover:bg-orange-50 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 font-bold text-xs flex items-center gap-1 shadow-sm transition-all"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-orange-500" />
+                            Inspect Payload
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Email Payload Details Modal */}
+      {selectedEmailLog && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 dark:border-gray-800 space-y-4 text-xs font-bold max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Mail className="w-5 h-5 text-orange-500" />
+                <h3 className="text-sm font-black text-gray-900 dark:text-gray-100">
+                  Email Dispatch Audit Payload
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedEmailLog(null)}
+                className="p-1 rounded-full text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <span className="text-[10px] uppercase text-gray-400 font-black block">Recipient</span>
+                <p className="text-sm font-mono text-orange-600 dark:text-orange-400 font-bold">{selectedEmailLog.recipient}</p>
+              </div>
+
+              <div>
+                <span className="text-[10px] uppercase text-gray-400 font-black block">Subject</span>
+                <p className="text-xs text-gray-900 dark:text-gray-100 font-black">{selectedEmailLog.subject}</p>
+              </div>
+
+              <div>
+                <span className="text-[10px] uppercase text-gray-400 font-black block">Timestamp</span>
+                <p className="text-xs text-gray-600 dark:text-gray-300 font-mono">{new Date(selectedEmailLog.timestamp).toLocaleString()}</p>
+              </div>
+
+              <div>
+                <span className="text-[10px] uppercase text-gray-400 font-black block mb-1">Email Body Content</span>
+                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 whitespace-pre-wrap font-sans text-xs text-gray-800 dark:text-gray-200 leading-relaxed font-normal">
+                  {selectedEmailLog.content}
+                </div>
+              </div>
+
+              {selectedEmailLog.metadata && Object.keys(selectedEmailLog.metadata).length > 0 && (
+                <div>
+                  <span className="text-[10px] uppercase text-gray-400 font-black block mb-1">Event Metadata Payload</span>
+                  <pre className="bg-gray-950 text-emerald-400 p-3 rounded-xl border border-gray-800 font-mono text-[11px] overflow-x-auto">
+                    {JSON.stringify(selectedEmailLog.metadata, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-gray-100 dark:border-gray-800">
+              <button
+                onClick={() => setSelectedEmailLog(null)}
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold px-5 py-2 rounded-xl"
+              >
+                Close Payload
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

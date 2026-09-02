@@ -57,7 +57,7 @@ export const MultiSiteDeploymentModal: React.FC<MultiSiteDeploymentModalProps> =
       title: '1. Customer Storefront App',
       domain: 'https://quickpal.in (or https://customer.quickpal.in)',
       envVar: 'VITE_PORTAL_MODE=customer',
-      desc: 'Clean 10-minute grocery shopping experience, UPI/COD checkout, coupon application, and live visual map order tracking.',
+      desc: 'Clean 30-minute grocery shopping experience, UPI/COD checkout, coupon application, and live visual map order tracking.',
       badgeColor: 'bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300 border-orange-300'
     },
     {

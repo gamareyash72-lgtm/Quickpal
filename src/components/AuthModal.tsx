@@ -238,7 +238,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </h2>
               <p className="text-xs text-orange-100 font-medium">
                 {isCustomerPortal || portalType === 'customer'
-                  ? 'Sign in for 10-minute instant delivery in Saphale (401102)'
+                  ? 'Sign in for 30-minute instant delivery in Saphale (401102)'
                   : detectedMode === 'partner'
                   ? 'Sign in to access assigned delivery orders and route navigation'
                   : detectedMode === 'admin'

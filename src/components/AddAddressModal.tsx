@@ -1,20 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { DeliveryAddress } from '../types';
-import { MapPin, Plus, Check, X, AlertTriangle, Building, Home, Briefcase, Navigation } from 'lucide-react';
+import { MapPin, Plus, Check, X, AlertTriangle, Building, Home, Briefcase, Navigation, Edit3 } from 'lucide-react';
 
 interface AddAddressModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddressAdded?: (newAddress: DeliveryAddress) => void;
+  initialAddress?: DeliveryAddress | null;
 }
 
 export const AddAddressModal: React.FC<AddAddressModalProps> = ({
   isOpen,
   onClose,
-  onAddressAdded
+  onAddressAdded,
+  initialAddress = null
 }) => {
-  const { addAddress, isPincodeApproved } = useApp();
+  const { addAddress, updateAddress, isPincodeApproved } = useApp();
+
+  const isEditMode = !!initialAddress;
 
   const [label, setLabel] = useState<'Home' | 'Work' | 'Other'>('Home');
   const [addressLine, setAddressLine] = useState('');
@@ -28,6 +32,32 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
   const [locationNotice, setLocationNotice] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Pre-fill fields when modal opens or initialAddress changes
+  useEffect(() => {
+    if (initialAddress) {
+      setLabel((initialAddress.label as any) || 'Home');
+      setAddressLine(initialAddress.addressLine || '');
+      setArea(initialAddress.area || 'Saphale East');
+      setCity(initialAddress.city || 'Palghar');
+      setPincode(initialAddress.pincode || '401102');
+      setLandmark(initialAddress.landmark || '');
+      setLatitude(initialAddress.latitude || 19.5785);
+      setLongitude(initialAddress.longitude || 72.8220);
+    } else {
+      setLabel('Home');
+      setAddressLine('');
+      setArea('Saphale East');
+      setCity('Palghar');
+      setPincode('401102');
+      setLandmark('');
+      setLatitude(19.5785);
+      setLongitude(72.8220);
+    }
+    setErrorMsg('');
+    setSuccessMsg('');
+    setLocationNotice('');
+  }, [initialAddress, isOpen]);
 
   if (!isOpen) return null;
 
@@ -51,9 +81,9 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
         setIsLocating(false);
         setLocationNotice(`GPS coordinates detected: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
       },
-      (err) => {
+      () => {
         setIsLocating(false);
-        setLocationNotice('Location permission unavailable. Using default Saphale East coordinates.');
+        setLocationNotice('Location permission unavailable. Using default Saphale coordinates.');
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
@@ -79,51 +109,72 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
       return;
     }
 
-    const newAddressData: Omit<DeliveryAddress, 'id'> = {
-      label,
-      addressLine: addressLine.trim(),
-      area: area.trim(),
-      city: city.trim() || 'Palghar',
-      pincode: pincode.trim(),
-      landmark: landmark.trim() || undefined,
-      isDefault: true,
-      latitude,
-      longitude
-    };
+    if (isEditMode && initialAddress) {
+      const updatedData: DeliveryAddress = {
+        ...initialAddress,
+        label,
+        addressLine: addressLine.trim(),
+        area: area.trim(),
+        city: city.trim() || 'Palghar',
+        pincode: pincode.trim(),
+        landmark: landmark.trim() || undefined,
+        latitude,
+        longitude
+      };
+      updateAddress(updatedData);
+      setSuccessMsg('Address updated successfully!');
+      setTimeout(() => {
+        onClose();
+        setSuccessMsg('');
+      }, 500);
+    } else {
+      const newAddressData: Omit<DeliveryAddress, 'id'> = {
+        label,
+        addressLine: addressLine.trim(),
+        area: area.trim(),
+        city: city.trim() || 'Palghar',
+        pincode: pincode.trim(),
+        landmark: landmark.trim() || undefined,
+        isDefault: true,
+        latitude,
+        longitude
+      };
 
-    addAddress(newAddressData);
-
-    setSuccessMsg('Address added successfully!');
-    setTimeout(() => {
-      onClose();
-      // Reset form
-      setAddressLine('');
-      setLandmark('');
-      setSuccessMsg('');
-    }, 600);
+      addAddress(newAddressData);
+      setSuccessMsg('New delivery address saved!');
+      setTimeout(() => {
+        onClose();
+        setAddressLine('');
+        setLandmark('');
+        setSuccessMsg('');
+      }, 500);
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-      <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 dark:border-gray-800 space-y-4 text-xs font-bold relative">
+    <div className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 dark:border-gray-800 space-y-4 text-xs font-bold relative max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-2xl bg-orange-100 dark:bg-orange-950/80 flex items-center justify-center text-orange-600 dark:text-orange-400 shrink-0">
-              <MapPin className="w-5 h-5" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-orange-100 dark:bg-orange-950/80 flex items-center justify-center text-orange-600 dark:text-orange-400 shrink-0">
+              {isEditMode ? <Edit3 className="w-5 h-5" /> : <MapPin className="w-5 h-5" />}
             </div>
             <div>
               <h3 className="text-sm font-black uppercase tracking-wide text-gray-900 dark:text-gray-100">
-                Add New Delivery Address
+                {isEditMode ? 'Edit Delivery Address' : 'Add New Delivery Address'}
               </h3>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
-                Save your home or work address for fast 30-min delivery
+                {isEditMode
+                  ? 'Update your saved location details for 30-min express delivery'
+                  : 'Save your home or work address in Saphale'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
@@ -131,14 +182,14 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
 
         {/* Feedback messages */}
         {errorMsg && (
-          <div className="p-3 bg-rose-50 dark:bg-rose-950/80 border border-rose-300 text-rose-700 dark:text-rose-200 rounded-2xl flex items-center gap-2 text-xs">
+          <div className="p-3 bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-200 rounded-2xl flex items-center gap-2 text-xs">
             <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300 text-emerald-700 dark:text-emerald-200 rounded-2xl flex items-center gap-2 text-xs">
+          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-200 rounded-2xl flex items-center gap-2 text-xs">
             <Check className="w-4 h-4 shrink-0 text-emerald-600" />
             <span>{successMsg}</span>
           </div>
@@ -148,7 +199,7 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-3.5">
           {/* Address Label Selector */}
           <div>
-            <label className="block mb-1.5 uppercase text-gray-500 text-[10px] font-black">
+            <label className="block mb-1.5 uppercase text-gray-500 dark:text-gray-400 text-[10px] font-black">
               Save Address As
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -182,7 +233,7 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
 
           {/* Address Line */}
           <div>
-            <label className="block mb-1 uppercase text-gray-500 text-[10px] font-black">
+            <label className="block mb-1 uppercase text-gray-500 dark:text-gray-400 text-[10px] font-black">
               House / Flat No., Building & Street Address *
             </label>
             <input
@@ -191,32 +242,34 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
               placeholder="e.g. Flat 302, Sai Residency, Station Road"
               value={addressLine}
               onChange={e => setAddressLine(e.target.value)}
-              className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-orange-500 outline-none"
+              className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-orange-500 outline-none text-gray-900 dark:text-gray-100"
             />
           </div>
 
           {/* Area & Landmark */}
           <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="block mb-1 uppercase text-gray-500 text-[10px] font-black">
+              <label className="block mb-1 uppercase text-gray-500 dark:text-gray-400 text-[10px] font-black">
                 Area / Locality *
               </label>
               <select
                 value={area}
                 onChange={e => setArea(e.target.value)}
-                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-3 py-2.5 text-xs font-bold focus:ring-2 focus:ring-orange-500 outline-none"
+                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-3 py-2.5 text-xs font-bold focus:ring-2 focus:ring-orange-500 outline-none text-gray-900 dark:text-gray-100"
               >
                 <option value="Saphale East">Saphale East</option>
                 <option value="Saphale West">Saphale West</option>
                 <option value="Station Road">Station Road</option>
                 <option value="Main Bazaar">Main Bazaar</option>
                 <option value="Gram Panchayat Area">Gram Panchayat Area</option>
+                <option value="Agashi Road">Agashi Road</option>
+                <option value="Kelve Road">Kelve Road Area</option>
                 <option value="Other Area">Other Area</option>
               </select>
             </div>
 
             <div>
-              <label className="block mb-1 uppercase text-gray-500 text-[10px] font-black">
+              <label className="block mb-1 uppercase text-gray-500 dark:text-gray-400 text-[10px] font-black">
                 Landmark (Optional)
               </label>
               <input
@@ -224,7 +277,7 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
                 placeholder="e.g. Near Railway Station"
                 value={landmark}
                 onChange={e => setLandmark(e.target.value)}
-                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-3 py-2.5 text-xs font-medium focus:ring-2 focus:ring-orange-500 outline-none"
+                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-3 py-2.5 text-xs font-medium focus:ring-2 focus:ring-orange-500 outline-none text-gray-900 dark:text-gray-100"
               />
             </div>
           </div>
@@ -232,7 +285,7 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
           {/* City & PIN Code */}
           <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="block mb-1 uppercase text-gray-500 text-[10px] font-black">
+              <label className="block mb-1 uppercase text-gray-500 dark:text-gray-400 text-[10px] font-black">
                 City / District
               </label>
               <input
@@ -240,12 +293,12 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
                 value={city}
                 onChange={e => setCity(e.target.value)}
                 placeholder="Palghar"
-                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-orange-500 outline-none"
+                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-orange-500 outline-none text-gray-900 dark:text-gray-100"
               />
             </div>
 
             <div>
-              <label className="block mb-1 uppercase text-gray-500 text-[10px] font-black">
+              <label className="block mb-1 uppercase text-gray-500 dark:text-gray-400 text-[10px] font-black">
                 PIN Code *
               </label>
               <input
@@ -255,7 +308,7 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
                 value={pincode}
                 onChange={e => setPincode(e.target.value)}
                 placeholder="401102"
-                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-3.5 py-2.5 text-xs font-mono font-bold focus:ring-2 focus:ring-orange-500 outline-none"
+                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-3.5 py-2.5 text-xs font-mono font-bold focus:ring-2 focus:ring-orange-500 outline-none text-gray-900 dark:text-gray-100"
               />
             </div>
           </div>
@@ -265,7 +318,7 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs font-black text-orange-900 dark:text-orange-300">
                 <Navigation className="w-4 h-4 text-orange-600 animate-pulse" />
-                <span>GPS Location Coordinates</span>
+                <span>GPS Coordinates</span>
               </div>
               <button
                 type="button"
@@ -274,7 +327,7 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
                 className="bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1 transition-transform active:scale-95 disabled:opacity-50"
               >
                 <Navigation className="w-3.5 h-3.5" />
-                {isLocating ? 'Locating...' : 'Use my current location'}
+                {isLocating ? 'Locating...' : 'Use current location'}
               </button>
             </div>
 
@@ -343,8 +396,8 @@ export const AddAddressModal: React.FC<AddAddressModalProps> = ({
               type="submit"
               className="bg-orange-500 hover:bg-orange-600 text-white font-black px-5 py-2.5 rounded-2xl shadow-md flex items-center gap-1.5 transition-transform active:scale-95"
             >
-              <Plus className="w-4 h-4" />
-              Save Delivery Address
+              {isEditMode ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {isEditMode ? 'Update Address' : 'Save Delivery Address'}
             </button>
           </div>
         </form>
