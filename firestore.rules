@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : {};
+    }
+
+    function isOwner() {
+      return isAuthenticated() && getUserData().get('role', '') == 'owner';
+    }
+
+    function isAdminOrOwner() {
+      return isAuthenticated() && (getUserData().get('role', '') in ['admin', 'owner']);
+    }
+
+    function isStaffOrAdmin() {
+      return isAuthenticated() && (getUserData().get('role', '') in ['admin', 'owner', 'store', 'partner', 'delivery_partner']);
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Orders Collection: enable real-time onSnapshot listeners and full order lifecycle across customer, delivery partner, and store owner/admin
+    match /orders/{orderId} {
+      allow read, write: if true;
+    }
+
+    // Products & Catalog Data
+    match /products/{productId} {
+      allow read, write: if true;
+    }
+
+    match /categories/{categoryId} {
+      allow read, write: if true;
+    }
+
+    match /banners/{bannerId} {
+      allow read, write: if true;
+    }
+
+    match /coupons/{couponId} {
+      allow read, write: if true;
+    }
+
+    match /servicePincodes/{pincodeId} {
+      allow read, write: if true;
+    }
+
+    match /paymentSettings/{settingId} {
+      allow read, write: if true;
+    }
+
+    match /notifications/{notifId} {
+      allow read, write: if true;
+    }
+
+    match /faqs/{faqId} {
+      allow read, write: if true;
+    }
+
+    match /supportTickets/{ticketId} {
+      allow read, write: if true;
+    }
+  }
+}
+

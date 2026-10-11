@@ -1,0 +1,29 @@
+{
+  "name": "QuickPal – Saphale's First Ever Online delivery at your doorstep",
+  "short_name": "QuickPal",
+  "description": "QuickPal – Saphale's First Ever Online delivery at your doorstep (401102)",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FF6A00",
+  "theme_color": "#FF6A00",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/quickpal-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

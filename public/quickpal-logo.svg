@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="100%" height="100%">
+  <!-- Vibrant QuickPal Brand Orange Background -->
+  <rect width="800" height="800" fill="#FF6A00" />
+
+  <!-- Inner Group Centered -->
+  <g transform="translate(400, 420)" text-anchor="middle">
+    <!-- Brand Wordmark "quickpal" -->
+    <text y="0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-weight="900" font-size="142" letter-spacing="-2px">
+      <tspan fill="#1A1A1A" dx="-8">quick</tspan>
+      <tspan fill="#FFFFFF">pal</tspan>
+    </text>
+
+    <!-- Subtitle: Saphale's First Ever Online delivery at your doorstep -->
+    <text y="68" font-family="'Georgia', 'Times New Roman', serif, system-ui" font-size="29.5" font-weight="500" fill="#111111" letter-spacing="0.2px">
+      Saphale&apos;s First Ever Online delivery at your doorstep
+    </text>
+  </g>
+</svg>
