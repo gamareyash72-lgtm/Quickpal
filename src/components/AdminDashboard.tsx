@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Product, Category, DeliveryPartner, Coupon, PromoBanner, PaymentSettings, OrderStatus, UserRole, FAQItem, SupportTicket } from '../types';
+import { Product, Category, DeliveryPartner, Coupon, PromoBanner, PaymentSettings, OrderStatus, UserRole, FAQItem, SupportTicket, StoreInfo } from '../types';
 import { PincodeManagementModal } from './PincodeManagementModal';
 import { printOrderReceipt } from '../utils/printReceipt';
 import { ExcelDataCenter } from './ExcelDataCenter';
@@ -53,12 +53,14 @@ import {
   Send,
   ShieldAlert,
   RefreshCw,
-  Download
+  Download,
+  Store,
+  Copy
 } from 'lucide-react';
 
 interface AdminDashboardProps {
   isOwnerMode?: boolean;
-  initialTab?: 'products' | 'categories' | 'orders' | 'payment_audit' | 'partners' | 'coupons' | 'banners' | 'reports' | 'accounts' | 'faqs' | 'tickets' | 'pincodes' | 'payments' | 'email_alerts';
+  initialTab?: 'products' | 'categories' | 'orders' | 'payment_audit' | 'partners' | 'stores' | 'coupons' | 'banners' | 'reports' | 'accounts' | 'faqs' | 'tickets' | 'pincodes' | 'payments' | 'email_alerts';
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = false, initialTab }) => {
@@ -102,11 +104,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     deleteFAQ,
     updateTicketStatus,
     emailAlertLogs,
-    sendTestAlertEmail
+    sendTestAlertEmail,
+    stores,
+    registerStore,
+    updateStore,
+    deleteStore
   } = useApp();
 
   const [adminTab, setAdminTab] = useState<
-    'products' | 'categories' | 'orders' | 'payment_audit' | 'partners' | 'coupons' | 'banners' | 'reports' | 'accounts' | 'faqs' | 'tickets' | 'pincodes' | 'payments' | 'email_alerts'
+    'products' | 'categories' | 'orders' | 'payment_audit' | 'partners' | 'stores' | 'coupons' | 'banners' | 'reports' | 'accounts' | 'faqs' | 'tickets' | 'pincodes' | 'payments' | 'email_alerts'
   >(initialTab || 'products');
 
   const [testAlertSending, setTestAlertSending] = useState<string | null>(null);
@@ -147,6 +153,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
   // Products Tab Filter & Search State for 200+ products
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('all');
+  const [productStoreFilter, setProductStoreFilter] = useState<string>('all');
   const [productStockFilter, setProductStockFilter] = useState<'all' | 'in_stock' | 'out_of_stock' | 'hidden'>('all');
 
   // FAQ Modal state
@@ -170,6 +177,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     phone: '',
     email: '',
     password: '',
+    storeId: stores[0]?.id || 'store-saphale-central',
     isActive: true
   });
 
@@ -179,6 +187,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
   const [productForm, setProductForm] = useState({
     name: '',
     category: categories[0]?.id || 'cat-veg',
+    storeId: stores[0]?.id || 'store-saphale-central',
     price: 30,
     originalPrice: 40,
     weightUnit: '500 g',
@@ -228,6 +237,132 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     description: '',
     isActive: true
   });
+
+  // Register / Edit Store Modal State
+  const [showStoreModal, setShowStoreModal] = useState(false);
+  const [editingStore, setEditingStore] = useState<StoreInfo | null>(null);
+  const [newlyRegisteredStore, setNewlyRegisteredStore] = useState<{
+    name: string;
+    loginId: string;
+    password: string;
+  } | null>(null);
+  const [storeForm, setStoreForm] = useState({
+    name: '',
+    ownerName: '',
+    area: 'Saphale East',
+    address: '',
+    pincode: '401102',
+    contactPhone: '',
+    categorySpecialty: 'Groceries, Dairy & Daily Essentials',
+    deliveryTimeMins: 25,
+    image: 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=600&q=80',
+    loginId: '',
+    password: '',
+    isActive: true
+  });
+
+  const handleOpenRegisterStore = () => {
+    setEditingStore(null);
+    setNewlyRegisteredStore(null);
+    setStoreForm({
+      name: '',
+      ownerName: '',
+      area: 'Saphale East',
+      address: '',
+      pincode: '401102',
+      contactPhone: '',
+      categorySpecialty: 'Groceries, Dairy & Daily Essentials',
+      deliveryTimeMins: 25,
+      image: 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=600&q=80',
+      loginId: '',
+      password: '',
+      isActive: true
+    });
+    setShowStoreModal(true);
+  };
+
+  const handleOpenEditStore = (store: StoreInfo) => {
+    setEditingStore(store);
+    setNewlyRegisteredStore(null);
+    setStoreForm({
+      name: store.name || '',
+      ownerName: store.ownerName || '',
+      area: store.area || 'Saphale East',
+      address: store.address || '',
+      pincode: store.pincode || '401102',
+      contactPhone: store.contactPhone || store.ownerPhone || '',
+      categorySpecialty: store.categorySpecialty || 'Groceries, Dairy & Daily Essentials',
+      deliveryTimeMins: Number(store.deliveryTimeMins) || 25,
+      image: store.image || 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=600&q=80',
+      loginId: store.loginId || '',
+      password: store.password || '',
+      isActive: store.isActive !== false
+    });
+    setShowStoreModal(true);
+  };
+
+  const handleStoreFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setStoreForm(prev => ({ ...prev, image: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRegisterStore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingStore) {
+      const res = await updateStore(editingStore.id, {
+        name: storeForm.name,
+        ownerName: storeForm.ownerName,
+        area: storeForm.area,
+        address: storeForm.address,
+        pincode: storeForm.pincode,
+        contactPhone: storeForm.contactPhone,
+        categorySpecialty: storeForm.categorySpecialty,
+        deliveryTimeMins: Number(storeForm.deliveryTimeMins) || 25,
+        image: storeForm.image,
+        loginId: storeForm.loginId,
+        password: storeForm.password,
+        isActive: storeForm.isActive
+      });
+      if (res.success) {
+        setShowStoreModal(false);
+        setEditingStore(null);
+      } else {
+        alert(res.message);
+      }
+      return;
+    }
+
+    const res = await registerStore(storeForm);
+    if (res.success && res.store) {
+      setNewlyRegisteredStore({
+        name: res.store.name,
+        loginId: res.store.loginId || '',
+        password: res.store.password || ''
+      });
+      setStoreForm({
+        name: '',
+        ownerName: '',
+        area: 'Saphale East',
+        address: '',
+        pincode: '401102',
+        contactPhone: '',
+        categorySpecialty: 'Groceries, Dairy & Daily Essentials',
+        deliveryTimeMins: 25,
+        image: 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=600&q=80',
+        loginId: '',
+        password: '',
+        isActive: true
+      });
+    } else {
+      alert(res.message);
+    }
+  };
 
   // Calculate Metrics
   const totalSales = orders.reduce((acc, o) => acc + (o.status !== 'cancelled' ? o.total : 0), 0);
@@ -289,11 +424,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     const pOrigPrice = Number(productForm.originalPrice) || pPrice;
     const pStock = Number(productForm.stock) || 0;
     const pDelivery = Number(productForm.deliveryTimeMins) || 10;
+    const assignedStore = stores.find(s => s.id === productForm.storeId) || stores[0];
 
     if (editingProduct) {
       updateProduct({
         ...editingProduct,
         ...productForm,
+        storeId: assignedStore?.id || productForm.storeId,
+        storeName: assignedStore?.name || editingProduct.storeName || 'QuickPal Partner Store',
         price: pPrice,
         originalPrice: pOrigPrice,
         stock: pStock,
@@ -308,6 +446,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     } else {
       addProduct({
         ...productForm,
+        storeId: assignedStore?.id || productForm.storeId,
+        storeName: assignedStore?.name || 'QuickPal Partner Store',
         price: pPrice,
         originalPrice: pOrigPrice,
         stock: pStock,
@@ -333,6 +473,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     setProductForm({
       name: p.name,
       category: p.category,
+      storeId: p.storeId || stores[0]?.id || 'store-saphale-central',
       price: p.price,
       originalPrice: p.originalPrice,
       weightUnit: p.weightUnit,
@@ -479,6 +620,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
       phone: userForm.phone,
       email: emailToUse,
       password: userForm.password,
+      storeId: userForm.role === 'store' ? userForm.storeId : undefined,
       status: userForm.isActive ? 'ACTIVE' : 'INACTIVE',
       isActive: userForm.isActive
     });
@@ -492,6 +634,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
         phone: '',
         email: '',
         password: '',
+        storeId: stores[0]?.id || 'store-saphale-central',
         isActive: true
       });
     }
@@ -584,6 +727,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
             { id: 'categories', label: '🏷️ Categories', icon: Layers },
             { id: 'orders', label: '🛒 Orders & Dispatch', icon: TrendingUp },
             { id: 'payment_audit', label: '🛡️ Payment Audits & Reconciliation', icon: ShieldCheck },
+            { id: 'stores', label: `🏪 Stores Reg. (${stores.length})`, icon: Store },
             { id: 'partners', label: '🛵 Partners Reg.', icon: Bike },
             { id: 'coupons', label: '🎟️ Coupons', icon: Tag },
             { id: 'banners', label: '🖼️ Promo Banners', icon: Sparkles },
@@ -621,12 +765,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
             prod.name.toLowerCase().includes(productSearch.toLowerCase()) ||
             prod.description?.toLowerCase().includes(productSearch.toLowerCase());
           const matchesCat = productCategoryFilter === 'all' || prod.category === productCategoryFilter;
+          const matchesStore = productStoreFilter === 'all' || (prod.storeId || stores[0]?.id) === productStoreFilter;
           const matchesStock = 
             productStockFilter === 'all' ? true :
             productStockFilter === 'in_stock' ? !prod.isOutOfStock && prod.stock > 0 && !prod.isHidden :
             productStockFilter === 'out_of_stock' ? (prod.isOutOfStock || prod.stock <= 0) :
             productStockFilter === 'hidden' ? prod.isHidden : true;
-          return matchesSearch && matchesCat && matchesStock;
+          return matchesSearch && matchesCat && matchesStore && matchesStock;
         });
 
         const handleQuickBatchRestock = () => {
@@ -729,7 +874,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
             </div>
 
             {/* Quick Search & Filters Bar for Fast Navigation across 200+ products */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-gray-50 dark:bg-gray-800/40 p-2.5 rounded-2xl border border-gray-100 dark:border-gray-800">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 bg-gray-50 dark:bg-gray-800/40 p-2.5 rounded-2xl border border-gray-100 dark:border-gray-800">
               <div className="relative">
                 <input
                   type="text"
@@ -757,6 +902,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
 
               <div>
                 <select
+                  value={productStoreFilter}
+                  onChange={(e) => setProductStoreFilter(e.target.value)}
+                  className="w-full text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-orange-500 font-semibold"
+                >
+                  <option value="all">🏪 All Partner Stores ({stores.length})</option>
+                  {stores.map(st => (
+                    <option key={st.id} value={st.id}>
+                      {st.name} {st.isActive === false ? '(Disabled)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <select
                   value={productStockFilter}
                   onChange={(e) => setProductStockFilter(e.target.value as any)}
                   className="w-full text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-orange-500 font-semibold"
@@ -774,7 +934,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                 <thead>
                   <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-400 uppercase font-black">
                     <th className="py-2.5 px-3">Item</th>
-                    <th className="py-2.5 px-3">Category</th>
+                    <th className="py-2.5 px-3">Category & Store</th>
                     <th className="py-2.5 px-3">Price</th>
                     <th className="py-2.5 px-3">Quick Stock Adjuster</th>
                     <th className="py-2.5 px-3">Status</th>
@@ -821,7 +981,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                             </div>
                           </td>
                           <td className="py-3 px-3 capitalize text-gray-600 dark:text-gray-300">
-                            {categories.find(c => c.id === prod.category)?.name || prod.category}
+                            <span className="block font-bold">
+                              {categories.find(c => c.id === prod.category)?.name || prod.category}
+                            </span>
+                            <span className="text-[10px] font-bold text-[#FF6A00] block truncate max-w-[160px]">
+                              🏪 {stores.find(s => s.id === prod.storeId)?.name || prod.storeName || stores[0]?.name || 'Central Store'}
+                            </span>
                           </td>
                           <td className="py-3 px-3 font-bold">
                             <span className="text-gray-900 dark:text-gray-100">₹{prod.price}</span>{' '}
@@ -1498,6 +1663,163 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tab: Partner Stores Registration, Editing & Enable/Disable Controls */}
+      {adminTab === 'stores' && (
+        <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-black uppercase text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                <Store className="w-4 h-4 text-[#FF6A00]" />
+                Shop by Your Favourite Store — Partner Stores ({stores.length})
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Register, edit, enable, or disable local favourite stores. Disabled stores are hidden from customers and blocked from store login.
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full">
+                  ✓ {stores.filter(s => s.isActive !== false).length} Enabled
+                </span>
+                <span className="bg-rose-100 text-rose-800 text-[10px] font-black px-2.5 py-0.5 rounded-full">
+                  ✕ {stores.filter(s => s.isActive === false).length} Disabled
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={handleOpenRegisterStore}
+              className="bg-[#FF6A00] hover:bg-orange-600 text-white text-xs font-black px-4 py-2.5 rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer self-start sm:self-auto"
+            >
+              <Plus className="w-4 h-4" /> Register New Store
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {stores.map(store => {
+              const isStoreEnabled = store.isActive !== false;
+              const storeProdsCount = products.filter(p => p.storeId === store.id).length;
+              const storeOrdersList = orders.filter(o =>
+                o.storeInfo?.id === store.id ||
+                (o.items || []).some(i => i?.product?.storeId === store.id)
+              );
+              const storeSalesAmt = storeOrdersList.reduce((sum, o) => {
+                if (o.status === 'cancelled' || o.status === 'rejected') return sum;
+                const matchingItems = (o.items || []).filter(i => i?.product?.storeId === store.id);
+                if (matchingItems.length > 0) {
+                  return sum + matchingItems.reduce((s, i) => s + (i.product?.price || 0) * (i.quantity || 1), 0);
+                }
+                return sum + (o.subtotal || o.total || 0);
+              }, 0);
+
+              return (
+                <div
+                  key={store.id}
+                  className={`rounded-2xl p-4 space-y-3 border transition-all ${
+                    isStoreEnabled
+                      ? 'bg-gray-50/80 dark:bg-gray-800/60 border-orange-200 dark:border-gray-700'
+                      : 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-300 dark:border-rose-900 opacity-90'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img
+                        src={store.image || 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=400&q=80'}
+                        alt={store.name}
+                        className={`w-12 h-12 rounded-xl object-cover border shrink-0 ${
+                          isStoreEnabled ? 'border-orange-200' : 'border-rose-300 grayscale'
+                        }`}
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="text-sm font-black text-gray-900 dark:text-gray-100 truncate">{store.name}</h4>
+                          <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                            isStoreEnabled
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {isStoreEnabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 truncate">
+                          Owner: {store.ownerName || 'Store Owner'} · {store.area} ({store.pincode})
+                        </p>
+                        <p className="text-[10px] text-[#FF6A00] font-bold truncate">{store.categorySpecialty}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                      <button
+                        type="button"
+                        onClick={() => updateStore(store.id, { isActive: !isStoreEnabled })}
+                        className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-colors flex items-center gap-1 ${
+                          isStoreEnabled
+                            ? 'bg-emerald-600 hover:bg-rose-600 text-white shadow-xs'
+                            : 'bg-rose-600 hover:bg-emerald-600 text-white shadow-xs'
+                        }`}
+                        title={isStoreEnabled ? 'Click to Disable Store' : 'Click to Enable Store'}
+                      >
+                        {isStoreEnabled ? 'Disable Store' : 'Enable Store'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditStore(store)}
+                        className="px-2.5 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#FF6A00] font-black text-[10px] flex items-center gap-1 border border-orange-200 cursor-pointer"
+                        title="Edit Store Details & Credentials"
+                      >
+                        <Edit className="w-3 h-3" /> Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Remove store "${store.name}"?`)) {
+                            deleteStore(store.id);
+                          }
+                        }}
+                        className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg cursor-pointer"
+                        title="Delete Store"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {!isStoreEnabled && (
+                    <div className="bg-rose-100/80 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-xl px-3 py-1.5 text-[10px] font-bold text-rose-800 dark:text-rose-300">
+                      🚫 Disabled: Hidden from Customer &quot;Shop by Your Favourite Store&quot; &amp; store login suspended.
+                    </div>
+                  )}
+
+                  {/* Store Login Credentials Box */}
+                  <div className="bg-white dark:bg-gray-900 border border-orange-200/80 dark:border-gray-700 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-black uppercase text-gray-400 block">Store Portal Credentials</span>
+                      <div className="font-mono font-bold text-gray-800 dark:text-gray-200 flex flex-wrap gap-3">
+                        <span>ID: <strong className="text-[#FF6A00]">{store.loginId || store.id}</strong></span>
+                        <span>Pass: <strong className="text-gray-900 dark:text-white">{store.password || 'store@123'}</strong></span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(`Store: ${store.name}\nLogin ID: ${store.loginId}\nPassword: ${store.password}`);
+                        alert(`Copied credentials for ${store.name}!`);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-[#FF6A00] font-black text-[10px] flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" /> Copy
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] font-bold text-gray-600 dark:text-gray-300 pt-1 border-t border-gray-200/70 dark:border-gray-700">
+                    <span>📦 {storeProdsCount} Products</span>
+                    <span>🛒 {storeOrdersList.length} Orders</span>
+                    <span className="text-[#FF6A00] font-black">Sales: ₹{storeSalesAmt.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -2754,6 +3076,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                 </div>
               </div>
 
+              <div>
+                <label className="block mb-1 text-[10px] font-black uppercase text-orange-600 dark:text-orange-400">
+                  Assigned Partner Store *
+                </label>
+                <select
+                  value={productForm.storeId}
+                  onChange={e => setProductForm({ ...productForm, storeId: e.target.value })}
+                  className="w-full bg-orange-50/70 dark:bg-gray-800 border border-orange-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 dark:text-gray-100"
+                  required
+                >
+                  {stores.map(st => (
+                    <option key={st.id} value={st.id}>
+                      🏪 {st.name} {st.isActive === false ? '(Disabled)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Real High-Quality Product Photographs Manager */}
               <div className="bg-orange-50/60 dark:bg-orange-950/30 p-3.5 rounded-2xl border border-orange-200/80 dark:border-orange-800/50 space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -3319,6 +3659,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                 </div>
               </div>
 
+              {userForm.role === 'store' && (
+                <div>
+                  <label className="block mb-1 uppercase text-orange-600 text-[10px] font-black">
+                    Assign to Partner Store *
+                  </label>
+                  <select
+                    value={userForm.storeId}
+                    onChange={e => setUserForm({ ...userForm, storeId: e.target.value })}
+                    className="w-full bg-orange-50 dark:bg-gray-800 border border-orange-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
+                  >
+                    {stores.map(st => (
+                      <option key={st.id} value={st.id}>
+                        🏪 {st.name} ({st.area})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block mb-1 uppercase text-gray-500 text-[10px] font-black">Phone Number</label>
@@ -3410,6 +3769,260 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                 <Trash2 className="w-3.5 h-3.5" /> Confirm Delete
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Register / Edit Store Modal */}
+      {showStoreModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 dark:border-gray-800 space-y-4 text-xs font-bold max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+              <h3 className="text-base font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Store className="w-5 h-5 text-[#FF6A00]" />
+                {editingStore ? `Edit Store: ${editingStore.name}` : 'Register Partner Store & Generate Login'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowStoreModal(false);
+                  setEditingStore(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {newlyRegisteredStore ? (
+              <div className="space-y-4">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-2 text-emerald-900">
+                  <div className="flex items-center gap-2 font-black text-sm">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                    <span>Store Registered Successfully!</span>
+                  </div>
+                  <p className="text-xs font-medium">
+                    Share these credentials with the store owner. Logging in with these will open ONLY their Store Dashboard:
+                  </p>
+                  <div className="bg-white rounded-xl p-3 border border-emerald-200 font-mono text-xs space-y-1">
+                    <p>Store: <strong className="text-gray-900">{newlyRegisteredStore.name}</strong></p>
+                    <p>Login ID: <strong className="text-[#FF6A00]">{newlyRegisteredStore.loginId}</strong></p>
+                    <p>Password: <strong className="text-gray-900">{newlyRegisteredStore.password}</strong></p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`Store: ${newlyRegisteredStore.name}\nLogin ID: ${newlyRegisteredStore.loginId}\nPassword: ${newlyRegisteredStore.password}`);
+                      alert('Store credentials copied to clipboard!');
+                    }}
+                    className="px-4 py-2 rounded-xl border border-orange-300 text-[#FF6A00] font-black flex items-center gap-1.5"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Copy Login Details
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewlyRegisteredStore(null);
+                      setShowStoreModal(false);
+                    }}
+                    className="bg-[#FF6A00] text-white font-black px-5 py-2 rounded-xl"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleRegisterStore} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block mb-1 text-[10px] font-black uppercase text-gray-500">Store Name *</label>
+                    <input
+                      type="text"
+                      value={storeForm.name}
+                      onChange={e => setStoreForm({ ...storeForm, name: e.target.value })}
+                      placeholder="e.g. Mahalaxmi Super Mart"
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[10px] font-black uppercase text-gray-500">Store Owner Name *</label>
+                    <input
+                      type="text"
+                      value={storeForm.ownerName}
+                      onChange={e => setStoreForm({ ...storeForm, ownerName: e.target.value })}
+                      placeholder="e.g. Suresh Sawant"
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block mb-1 text-[10px] font-black uppercase text-gray-500">Area / Locality *</label>
+                    <input
+                      type="text"
+                      value={storeForm.area}
+                      onChange={e => setStoreForm({ ...storeForm, area: e.target.value })}
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[10px] font-black uppercase text-gray-500">PIN Code *</label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={storeForm.pincode}
+                      onChange={e => setStoreForm({ ...storeForm, pincode: e.target.value })}
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-mono font-bold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[10px] font-black uppercase text-gray-500">Phone *</label>
+                    <input
+                      type="tel"
+                      value={storeForm.contactPhone}
+                      onChange={e => setStoreForm({ ...storeForm, contactPhone: e.target.value })}
+                      placeholder="+91 98000 00000"
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block mb-1 text-[10px] font-black uppercase text-gray-500">Full Store Address *</label>
+                  <input
+                    type="text"
+                    value={storeForm.address}
+                    onChange={e => setStoreForm({ ...storeForm, address: e.target.value })}
+                    placeholder="Shop No. 2, Main Market Road, Saphale West"
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block mb-1 text-[10px] font-black uppercase text-gray-500">Category Specialty</label>
+                    <input
+                      type="text"
+                      value={storeForm.categorySpecialty}
+                      onChange={e => setStoreForm({ ...storeForm, categorySpecialty: e.target.value })}
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[10px] font-black uppercase text-gray-500">Delivery Time (mins)</label>
+                    <input
+                      type="number"
+                      min={10}
+                      max={60}
+                      value={storeForm.deliveryTimeMins}
+                      onChange={e => setStoreForm({ ...storeForm, deliveryTimeMins: Number(e.target.value) })}
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Store Photo URL / Upload */}
+                <div className="bg-gray-50 dark:bg-gray-800/60 p-3 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-2">
+                  <label className="block text-[10px] font-black uppercase text-gray-500">Store Photo</label>
+                  <div className="flex items-center gap-3">
+                    {storeForm.image && (
+                      <img
+                        src={storeForm.image}
+                        alt="Store preview"
+                        className="w-12 h-12 rounded-xl object-cover border border-orange-200 shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 space-y-1.5">
+                      <input
+                        type="url"
+                        value={storeForm.image}
+                        onChange={e => setStoreForm({ ...storeForm, image: e.target.value })}
+                        placeholder="https://..."
+                        className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-1.5 text-xs"
+                      />
+                      <label className="cursor-pointer inline-flex items-center gap-1 text-[10px] font-black text-[#FF6A00] hover:underline">
+                        <Upload className="w-3 h-3" /> Upload Store Photo File
+                        <input type="file" accept="image/*" onChange={handleStoreFileUpload} className="hidden" />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Store Status Enable/Disable Toggle */}
+                <div className="flex items-center justify-between bg-orange-50/50 dark:bg-gray-800/70 p-3 rounded-2xl border border-orange-200/80 dark:border-gray-700">
+                  <div>
+                    <span className="text-xs font-black text-gray-900 dark:text-gray-100 block">
+                      Store Status (Customer Visibility &amp; Login)
+                    </span>
+                    <span className="text-[10px] text-gray-500">
+                      {storeForm.isActive ? 'Enabled — Visible in Favourite Stores & Store Login Active' : 'Disabled — Hidden from Customers & Store Login Blocked'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStoreForm(prev => ({ ...prev, isActive: !prev.isActive }))}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-black cursor-pointer transition-colors ${
+                      storeForm.isActive
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-rose-600 text-white'
+                    }`}
+                  >
+                    {storeForm.isActive ? '✓ Enabled' : '✕ Disabled'}
+                  </button>
+                </div>
+
+                <div className="bg-orange-50/70 dark:bg-orange-950/20 p-3 rounded-2xl border border-orange-200 space-y-2">
+                  <span className="text-[10px] font-black uppercase text-[#FF6A00] block">
+                    {editingStore ? 'Store Login Credentials (Editable)' : 'Store Login Credentials (Leave blank to auto-generate)'}
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={storeForm.loginId}
+                      onChange={e => setStoreForm({ ...storeForm, loginId: e.target.value })}
+                      placeholder="Custom Login ID (e.g. store_mahalaxmi)"
+                      className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-mono"
+                      required={!!editingStore}
+                    />
+                    <input
+                      type="text"
+                      value={storeForm.password}
+                      onChange={e => setStoreForm({ ...storeForm, password: e.target.value })}
+                      placeholder="Custom Password (e.g. store@123)"
+                      className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-mono"
+                      required={!!editingStore}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowStoreModal(false);
+                      setEditingStore(null);
+                    }}
+                    className="px-4 py-2 rounded-xl border border-gray-200 text-gray-500 font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-[#FF6A00] hover:bg-orange-600 text-white font-black px-5 py-2 rounded-xl shadow-md cursor-pointer"
+                  >
+                    {editingStore ? 'Save Store Changes' : 'Register Store & Issue Credentials'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

@@ -73,9 +73,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const staffRolesConfig: { id: UserRole; label: string; icon: React.ReactNode }[] = [
     { id: 'partner', label: 'Delivery Partner', icon: <Bike className="w-4 h-4" /> },
-    { id: 'store', label: 'Store Staff', icon: <Store className="w-4 h-4" /> },
+    { id: 'store', label: 'Store Owner', icon: <Store className="w-4 h-4" /> },
     { id: 'admin', label: 'Admin', icon: <ShieldCheck className="w-4 h-4" /> },
-    { id: 'owner', label: 'Owner', icon: <ShieldAlert className="w-4 h-4" /> },
+    { id: 'owner', label: 'QuickPal Owner', icon: <ShieldAlert className="w-4 h-4" /> },
   ];
 
   const handleGoogleSignIn = async () => {
@@ -703,14 +703,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       : staffRole === 'admin'
                       ? 'Admin Registered Email / Username'
                       : staffRole === 'owner'
-                      ? 'Owner Registered Email / Username'
-                      : 'Staff Registered Email / Username'}
+                      ? 'QuickPal Owner Email / Username'
+                      : 'Store Login ID / Email'}
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                     <input
                       type="text"
-                      placeholder={`e.g. ${staffRole}@quickpal.com`}
+                      placeholder={staffRole === 'store' ? 'e.g. store_central' : `e.g. ${staffRole}@quickpal.com`}
                       value={emailInput}
                       onChange={e => setEmailInput(e.target.value)}
                       className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-3 py-2.5 text-xs font-medium focus:ring-2 focus:ring-orange-500"
@@ -727,7 +727,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       ? 'Admin Portal Password'
                       : staffRole === 'owner'
                       ? 'Owner Suite Password'
-                      : 'Staff Portal Password'}
+                      : 'Store Dashboard Password'}
                   </label>
                   <div className="relative">
                     <KeyRound className="w-4 h-4 text-gray-400 absolute left-3 top-3" />

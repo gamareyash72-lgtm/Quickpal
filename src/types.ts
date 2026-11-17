@@ -45,6 +45,8 @@ export interface Category {
   itemCount?: number;
 }
 
+export type DietaryTag = 'Vegan' | 'Gluten-Free' | 'Organic' | 'Dairy-Free' | 'Sugar-Free' | 'Pure Veg';
+
 export interface Product {
   id: string;
   name: string;
@@ -63,6 +65,9 @@ export interface Product {
   description: string;
   isFeatured?: boolean;
   deliveryTimeMins: number;
+  dietaryTags?: DietaryTag[];
+  storeId?: string;
+  storeName?: string;
 }
 
 export interface CartItem {
@@ -93,6 +98,19 @@ export interface StoreInfo {
   contactPhone: string;
   lat: number;
   lng: number;
+  ownerName?: string;
+  ownerEmail?: string;
+  ownerPhone?: string;
+  loginId?: string;
+  password?: string;
+  categorySpecialty?: string;
+  rating?: number;
+  reviewsCount?: number;
+  image?: string;
+  deliveryTimeMins?: number;
+  isActive?: boolean;
+  createdAt?: string;
+  totalSales?: number;
 }
 
 export interface PartnerResponseLog {
@@ -117,7 +135,10 @@ export interface Order {
   discount: number;
   total: number;
   paymentMethod: PaymentMethod;
-  paymentStatus: 'pending' | 'paid' | 'failed' | 'under_review';
+  paymentStatus: 'pending' | 'paid' | 'failed' | 'under_review' | 'cancelled';
+  paymentApp?: 'gpay' | 'phonepe' | 'paytm' | 'other_upi';
+  paymentReference?: string;
+  paymentVerifiedAt?: string;
   paymentTransactionId?: string;
   paymentFailureReason?: string;
   paymentScreenshotUrl?: string;
@@ -142,6 +163,14 @@ export interface Order {
   deliveryCompletedWithOtp?: boolean;
   maskedCustomerPhone?: string;
   notes?: string;
+  feedback?: OrderFeedback;
+}
+
+export interface OrderFeedback {
+  rating: number;
+  comment?: string;
+  tags?: string[];
+  submittedAt: string;
 }
 
 export interface DeliveryPartner {

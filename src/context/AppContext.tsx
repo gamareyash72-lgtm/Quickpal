@@ -42,6 +42,7 @@ import {
   CartItem,
   Order,
   OrderStatus,
+  OrderFeedback,
   StoreInfo,
   DeliveryPartner,
   Coupon,
@@ -77,7 +78,9 @@ import {
   INITIAL_ADDRESSES,
   INITIAL_FAQS,
   INITIAL_SUPPORT_TICKETS,
-  INITIAL_SERVICE_PINCODES
+  INITIAL_SERVICE_PINCODES,
+  INITIAL_ORDERS,
+  INITIAL_STORES
 } from '../data/mockData';
 
 const INITIAL_USERS: AppUser[] = [];
@@ -132,19 +135,34 @@ interface AppContextType {
   
   themeMode: 'light' | 'dark';
   toggleTheme: () => void;
+  isDiwaliTheme: boolean;
+  setIsDiwaliTheme: (val: boolean) => void;
+  toggleDiwaliTheme: () => void;
   
   appliedCoupon: Coupon | null;
   applyCoupon: (code: string) => { success: boolean; message: string };
   removeCoupon: () => void;
   
   // Order actions
-  placeOrder: (paymentMethod: PaymentMethod, notes?: string, transactionId?: string, submittedAmount?: number, paymentScreenshotUrl?: string, customerMobile?: string) => { success: boolean; orderId?: string; message: string; paymentStatus?: 'paid' | 'failed' | 'under_review' | 'pending'; failureReason?: string };
+  placeOrder: (
+    paymentMethod: PaymentMethod,
+    notes?: string,
+    transactionId?: string,
+    submittedAmount?: number,
+    paymentScreenshotUrl?: string,
+    customerMobile?: string,
+    customOrderId?: string,
+    paymentRef?: string,
+    paymentApp?: 'gpay' | 'phonepe' | 'paytm' | 'other_upi',
+    serverVerified?: boolean
+  ) => { success: boolean; orderId?: string; message: string; paymentStatus?: 'paid' | 'failed' | 'under_review' | 'pending' | 'cancelled'; failureReason?: string };
   reverifyOrderPayment: (orderId: string, utrNumber: string, submittedAmount: number, paymentScreenshotUrl?: string) => { success: boolean; message: string };
   adminReviewPayment: (orderId: string, action: 'approve' | 'reject', note?: string) => void;
   partnerRespondToOrder: (orderId: string, action: 'accepted' | 'rejected') => Promise<{ success: boolean; message: string }>;
   storeAcceptOrder: (orderId: string) => void;
   updateOrderStatusByAdmin: (orderId: string, status: OrderStatus, partnerId?: string) => void;
   completeDeliveryWithOtp: (orderId: string, otp: string) => Promise<{ success: boolean; message: string }>;
+  submitOrderFeedback: (orderId: string, feedback: { rating: number; comment?: string; tags?: string[] }) => { success: boolean; message: string };
   
   // Management actions
   addProduct: (product: Omit<Product, 'id'>) => void;
@@ -193,6 +211,14 @@ interface AppContextType {
   submitSupportTicket: (ticket: Omit<SupportTicket, 'id' | 'createdAt' | 'status'>) => Promise<SupportTicket>;
   updateTicketStatus: (ticketId: string, status: 'open' | 'in_progress' | 'resolved') => void;
 
+  // Stores & Multi-Store Management
+  stores: StoreInfo[];
+  registerStore: (storeData: Partial<StoreInfo>) => Promise<{ success: boolean; message: string; store?: StoreInfo }>;
+  updateStore: (id: string, updates: Partial<StoreInfo>) => Promise<{ success: boolean; message: string }>;
+  deleteStore: (id: string) => Promise<{ success: boolean; message: string }>;
+  selectedStoreId: string | null;
+  setSelectedStoreId: (storeId: string | null) => void;
+
   // Automated Email Alerts System (quickpal.in@outlook.com)
   emailAlertLogs: EmailAlertLog[];
   sendTestAlertEmail: (type?: EmailAlertType) => Promise<{ success: boolean; message: string }>;
@@ -210,11 +236,61 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
+  const [isDiwaliTheme, setIsDiwaliTheme] = useState<boolean>(() => {
+    const saved = safeJsonParse('qp_diwali_theme', null);
+    if (saved !== null && typeof saved === 'boolean') return saved;
+    return true; // Enable Diwali theme by default
+  });
+
+  const getDefaultStoreForCategory = (categoryId: string): { storeId: string; storeName: string } => {
+    if (categoryId === 'cat-veg') {
+      return { storeId: 'store-green-fresh', storeName: 'Green Leaf Farm Fresh & Veggies' };
+    }
+    if (['cat-atta', 'cat-masala', 'cat-sauces', 'cat-cleaning'].includes(categoryId)) {
+      return { storeId: 'store-sai-kirana', storeName: 'Shree Sai Kirana & General Stores' };
+    }
+    if (['cat-bakery', 'cat-sweets'].includes(categoryId)) {
+      return { storeId: 'store-royal-bakery', storeName: 'Royal Bakery & Sweet Confectionery' };
+    }
+    return { storeId: 'store-saphale-central', storeName: 'QuickPal Saphale Central Mart' };
+  };
+
+  const [stores, setStores] = useState<StoreInfo[]>(() => {
+    const loaded = safeJsonParse('qp_stores', INITIAL_STORES);
+    return Array.isArray(loaded) && loaded.length > 0 ? loaded : INITIAL_STORES;
+  });
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
 
   const [users, setUsers] = useState<AppUser[]>(() => safeJsonParse('qp_users', INITIAL_USERS));
   const [currentUser, setCurrentUser] = useState<AppUser | null>(() => safeJsonParse('qp_current_user', null));
   const [categories, setCategories] = useState<Category[]>(() => safeJsonParse('qp_categories', INITIAL_CATEGORIES));
-  const [products, setProducts] = useState<Product[]>(() => safeJsonParse('qp_products', INITIAL_PRODUCTS));
+  const [products, setProducts] = useState<Product[]>(() => {
+    const loaded = safeJsonParse('qp_products', INITIAL_PRODUCTS);
+    const baseList = (!Array.isArray(loaded) || loaded.length === 0) ? INITIAL_PRODUCTS : loaded;
+    const existingIds = new Set(baseList.map(p => p.id));
+    const merged: Product[] = baseList.map(p => {
+      const found = INITIAL_PRODUCTS.find(ip => ip.id === p.id);
+      const defStore = getDefaultStoreForCategory(p.category || found?.category || '');
+      return {
+        ...p,
+        dietaryTags: found?.dietaryTags || p.dietaryTags || [],
+        storeId: p.storeId || defStore.storeId,
+        storeName: p.storeName || defStore.storeName,
+      };
+    });
+    // Add any newly introduced products from INITIAL_PRODUCTS
+    INITIAL_PRODUCTS.forEach(ip => {
+      if (!existingIds.has(ip.id)) {
+        const defStore = getDefaultStoreForCategory(ip.category);
+        merged.push({
+          ...ip,
+          storeId: ip.storeId || defStore.storeId,
+          storeName: ip.storeName || defStore.storeName,
+        });
+      }
+    });
+    return merged;
+  });
   const [banners, setBanners] = useState<PromoBanner[]>(() => safeJsonParse('qp_banners', INITIAL_BANNERS));
   const [partners, setPartners] = useState<DeliveryPartner[]>(() => safeJsonParse('qp_partners', INITIAL_PARTNERS));
   const [coupons, setCoupons] = useState<Coupon[]>(() => safeJsonParse('qp_coupons', INITIAL_COUPONS));
@@ -256,12 +332,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [servicePincodes, setServicePincodes] = useState<ServicePincode[]>(() => safeJsonParse('qp_service_pincodes', INITIAL_SERVICE_PINCODES));
   const [emailAlertLogs, setEmailAlertLogs] = useState<EmailAlertLog[]>(() => safeJsonParse('qp_email_alerts', []));
 
-  // Default initial orders
-  const [orders, setOrders] = useState<Order[]>(() => safeJsonParse('qp_orders', []));
+  // Default initial orders with completed delivery for rating experience
+  const [orders, setOrders] = useState<Order[]>(() => {
+    const loaded = safeJsonParse('qp_orders', INITIAL_ORDERS);
+    return Array.isArray(loaded) && loaded.length > 0 ? loaded : INITIAL_ORDERS;
+  });
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => safeJsonParse('qp_notifications', []));
 
   // Persist state safely to localStorage without throwing QuotaExceededError
+  useEffect(() => { safeLocalStorageSet('qp_stores', stores); }, [stores]);
   useEffect(() => { safeLocalStorageSet('qp_users', users); }, [users]);
   useEffect(() => { safeLocalStorageSet('qp_current_user', currentUser); }, [currentUser]);
   useEffect(() => { safeLocalStorageSet('qp_categories', categories); }, [categories]);
@@ -321,6 +401,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           const pImg = d?.image || (Array.isArray(d?.images) && d.images[0]) || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80';
           const pImgs = Array.isArray(d?.images) && d.images.length > 0 ? d.images : [pImg];
 
+          const defStore = getDefaultStoreForCategory(d?.category || 'cat-kitchen');
           remoteProducts.push({
             id: docSnap.id,
             name: d?.name || 'Product',
@@ -338,7 +419,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             reviewsCount: Number(d?.reviewsCount) || 1,
             description: d?.description || '',
             isFeatured: !!d?.isFeatured,
-            deliveryTimeMins: pDelivery
+            deliveryTimeMins: pDelivery,
+            dietaryTags: Array.isArray(d?.dietaryTags)
+              ? d.dietaryTags
+              : (INITIAL_PRODUCTS.find(ip => ip.id === docSnap.id)?.dietaryTags || []),
+            storeId: d?.storeId || defStore.storeId,
+            storeName: d?.storeName || defStore.storeName,
           });
         });
         if (remoteProducts.length > 0) {
@@ -347,6 +433,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }, (err) => {
       console.warn('[AppContext onSnapshot products] Notice:', err);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore stores subscription with auto-seeding
+  useEffect(() => {
+    if (!db) return;
+    const unsub = onSnapshot(collection(db, 'stores'), async (snapshot) => {
+      if (snapshot.empty) {
+        try {
+          for (const st of INITIAL_STORES) {
+            await setDoc(doc(db, 'stores', st.id), st);
+          }
+        } catch (e) {
+          console.warn('[AppContext] Error seeding stores to Firestore:', e);
+        }
+      } else {
+        const remoteStores: StoreInfo[] = [];
+        snapshot.forEach(docSnap => {
+          remoteStores.push({ id: docSnap.id, ...docSnap.data() } as StoreInfo);
+        });
+        if (remoteStores.length > 0) {
+          setStores(remoteStores);
+        }
+      }
+    }, (err) => {
+      console.warn('[AppContext onSnapshot stores] Notice:', err);
     });
 
     return () => unsub();
@@ -637,8 +751,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [themeMode]);
 
+  // Apply diwali-mode class to body
+  useEffect(() => {
+    safeLocalStorageSet('qp_diwali_theme', isDiwaliTheme);
+    if (isDiwaliTheme) {
+      document.body.classList.add('diwali-mode');
+    } else {
+      document.body.classList.remove('diwali-mode');
+    }
+  }, [isDiwaliTheme]);
+
   const toggleTheme = () => {
     setThemeMode(prev => prev === 'light' ? 'dark' : 'light');
+  };
+
+  const toggleDiwaliTheme = () => {
+    setIsDiwaliTheme(prev => !prev);
   };
 
   const isDeliveryPartnerUser = currentUser && currentUser.role === 'partner';
@@ -751,8 +879,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setCurrentRole('customer');
         }
       } else {
-        setCurrentUser(null);
-        setCurrentRole('customer');
+        const savedLocalUser = safeJsonParse('qp_current_user', null) as AppUser | null;
+        if (savedLocalUser && savedLocalUser.role && savedLocalUser.role !== 'customer') {
+          setCurrentUser(savedLocalUser);
+          setCurrentRole(savedLocalUser.role);
+        } else {
+          setCurrentUser(null);
+          setCurrentRole('customer');
+        }
       }
     });
     return () => unsubscribe();
@@ -767,7 +901,72 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // User Authentication Handlers
   const loginUser = async (identifier: string, role: UserRole, password?: string, _otp?: string) => {
-    const cleanEmail = identifier.trim().toLowerCase();
+    const cleanId = identifier.trim();
+    const cleanEmail = cleanId.toLowerCase();
+
+    if (!cleanId) {
+      return {
+        success: false,
+        message: 'Please enter your Login ID, username, or email address.'
+      };
+    }
+    if (!password) {
+      return {
+        success: false,
+        message: '[auth/missing-password] Password is required to log in.'
+      };
+    }
+
+    // Direct Store Owner credential check (allows registered stores to log in directly with their Store Login ID & Password and open ONLY the Store Dashboard)
+    const matchedStore = stores.find(s =>
+      (s.loginId && s.loginId.toLowerCase() === cleanEmail) ||
+      (s.ownerEmail && s.ownerEmail.toLowerCase() === cleanEmail) ||
+      (s.id.toLowerCase() === cleanEmail)
+    );
+
+    if (matchedStore && (role === 'store' || matchedStore.loginId?.toLowerCase() === cleanEmail)) {
+      if (matchedStore.isActive === false) {
+        return {
+          success: false,
+          message: `Store '${matchedStore.name}' is currently disabled by QuickPal Admin. Please contact Admin.`
+        };
+      }
+      if ((matchedStore.password || '') !== password) {
+        return {
+          success: false,
+          message: 'Incorrect store password. Please check the password issued by QuickPal Admin.'
+        };
+      }
+      if (role !== 'store' && role !== 'customer') {
+        return {
+          success: false,
+          message: `This Login ID belongs to Store '${matchedStore.name}'. Please select Store Owner portal to log in.`
+        };
+      }
+
+      const storeUser: AppUser = {
+        id: `store-user-${matchedStore.id}`,
+        name: matchedStore.ownerName || matchedStore.name,
+        role: 'store',
+        username: matchedStore.loginId || cleanEmail,
+        email: matchedStore.ownerEmail || `${matchedStore.loginId || matchedStore.id}@storequickpal.in`,
+        phone: matchedStore.ownerPhone || matchedStore.contactPhone,
+        status: 'ACTIVE',
+        isActive: true,
+        isVerified: true,
+        storeId: matchedStore.id,
+        serviceArea: `${matchedStore.area} (${matchedStore.pincode})`,
+        createdAt: matchedStore.createdAt || new Date().toISOString()
+      };
+
+      setCurrentUser(storeUser);
+      setCurrentRole('store');
+      return {
+        success: true,
+        message: `Welcome, ${matchedStore.name}! Opened your Store Owner Dashboard.`,
+        user: storeUser
+      };
+    }
 
     // Lookup staff email if username or phone was provided
     let targetEmail = cleanEmail;
@@ -783,14 +982,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!targetEmail || !targetEmail.includes('@')) {
       return {
         success: false,
-        message: '[auth/invalid-email] Please enter a valid account email address or registered staff username.'
-      };
-    }
-
-    if (!password) {
-      return {
-        success: false,
-        message: '[auth/missing-password] Password is required to log in.'
+        message: '[auth/invalid-email] Please enter a valid account email address or registered store/staff Login ID.'
       };
     }
 
@@ -839,11 +1031,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
 
       // Verify user account status
-      if (userData.status === 'INACTIVE' || userData.status === 'SUSPENDED') {
+      if (userData.status === 'INACTIVE' || userData.status === 'SUSPENDED' || userData.isActive === false) {
         await signOut(auth);
         return {
           success: false,
-          message: `Account '${userData.name}' is currently ${userData.status}. Access has been revoked.`
+          message: `Account '${userData.name}' is currently disabled or ${userData.status}. Access has been revoked.`
         };
       }
 
@@ -860,6 +1052,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           success: false,
           message: 'Access Denied: Invalid or unassigned user role in database profile.'
         };
+      }
+
+      // Store user linked store verification & active check
+      if (actualRole === 'store') {
+        const linkedStore = stores.find(s =>
+          (userData.storeId && s.id === userData.storeId) ||
+          (userData.username && s.loginId?.toLowerCase() === userData.username.toLowerCase()) ||
+          (userData.email && s.ownerEmail?.toLowerCase() === userData.email.toLowerCase())
+        );
+        if (linkedStore) {
+          if (linkedStore.isActive === false) {
+            await signOut(auth);
+            return {
+              success: false,
+              message: `Store '${linkedStore.name}' is currently disabled by QuickPal Admin. Please contact Admin.`
+            };
+          }
+          userData = { ...userData, storeId: linkedStore.id };
+        }
       }
 
       // 1. OWNER trying to access non-owner staff portal (e.g. Delivery Partner portal)
@@ -919,7 +1130,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       setCurrentUser(userData);
       const { mode: activePortal } = getDetectedPortalMode();
-      if (activePortal === 'customer') {
+      if (activePortal === 'customer' && actualRole !== 'store') {
         setCurrentRole('customer');
       } else {
         setCurrentRole(userData.role);
@@ -963,11 +1174,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             matchedDoc.role = 'partner';
           }
 
-          if (matchedDoc.status === 'INACTIVE' || matchedDoc.status === 'SUSPENDED') {
+          if (matchedDoc.status === 'INACTIVE' || matchedDoc.status === 'SUSPENDED' || matchedDoc.isActive === false) {
             return {
               success: false,
-              message: `Account '${matchedDoc.name}' is currently ${matchedDoc.status}. Access has been revoked.`
+              message: `Account '${matchedDoc.name}' is currently disabled or ${matchedDoc.status}. Access has been revoked.`
             };
+          }
+
+          if (actualRole === 'store') {
+            const linkedStore = stores.find(s =>
+              (matchedDoc?.storeId && s.id === matchedDoc.storeId) ||
+              (matchedDoc?.username && s.loginId?.toLowerCase() === matchedDoc.username.toLowerCase()) ||
+              (matchedDoc?.email && s.ownerEmail?.toLowerCase() === matchedDoc.email.toLowerCase())
+            );
+            if (linkedStore) {
+              if (linkedStore.isActive === false) {
+                return {
+                  success: false,
+                  message: `Store '${linkedStore.name}' is currently disabled by QuickPal Admin. Please contact Admin.`
+                };
+              }
+              matchedDoc = { ...matchedDoc, storeId: linkedStore.id };
+            }
           }
 
           if (role !== 'customer' && actualRole !== role && !(actualRole === 'admin' && (role === 'store' || role === 'partner')) && actualRole !== 'owner') {
@@ -979,7 +1207,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
           setCurrentUser(matchedDoc);
           const { mode: activePortal } = getDetectedPortalMode();
-          if (activePortal === 'customer') {
+          if (activePortal === 'customer' && actualRole !== 'store') {
             setCurrentRole('customer');
           } else {
             setCurrentRole(matchedDoc.role);
@@ -1306,7 +1534,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         status: userData.status || 'ACTIVE',
         isActive: userData.status !== 'INACTIVE',
         createdAt: new Date().toISOString(),
-        storeId: userData.storeId || 'store-saphale-1',
+        storeId: userData.storeId || (userData.role === 'store' ? (stores[0]?.id || 'store-saphale-central') : undefined),
         serviceArea: userData.serviceArea || 'Saphale & Palghar East'
       };
 
@@ -1496,6 +1724,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const logoutUser = () => {
+    try { localStorage.removeItem('qp_current_user'); } catch {}
     signOut(auth).catch(err => console.error("SignOut error:", err));
     setCurrentUser(null);
     setCurrentRole('customer');
@@ -1606,8 +1835,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     transactionId?: string,
     submittedAmount?: number,
     paymentScreenshotUrl?: string,
-    customerMobile?: string
-  ) => {
+    customerMobile?: string,
+    customOrderId?: string,
+    paymentRef?: string,
+    paymentApp?: 'gpay' | 'phonepe' | 'paytm' | 'other_upi',
+    serverVerified?: boolean
+  ): {
+    success: boolean;
+    orderId?: string;
+    message: string;
+    paymentStatus?: 'pending' | 'paid' | 'failed' | 'cancelled' | 'under_review';
+    failureReason?: string;
+  } => {
     if (cartItems.length === 0) {
       return { success: false, message: 'Your cart is empty!' };
     }
@@ -1646,20 +1885,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
-    // Run strict Payment Verification for Online methods (UPI / Cards / NetBanking)
-    const paymentCheck = verifyPaymentDetails(
-      paymentMethod,
-      transactionId || '',
-      submittedAmount || total,
-      total,
-      orders
-    );
+    const targetOrderId = customOrderId || ('QP-' + Math.floor(1000 + Math.random() * 9000));
 
-    const newOrderId = 'QP-' + Math.floor(1000 + Math.random() * 9000);
+    // Prevent duplicate orders & duplicate payment processing
+    const existingOrder = orders.find(o => o.id === targetOrderId);
+    if (existingOrder && existingOrder.paymentStatus === 'paid') {
+      console.log(`[IDEMPOTENT ORDER CONFIRMATION] Order #${targetOrderId} is already confirmed.`);
+      clearCart();
+      return {
+        success: true,
+        orderId: targetOrderId,
+        paymentStatus: 'paid' as const,
+        message: `Order #${targetOrderId} already confirmed!`
+      };
+    }
+
+    // Run strict Payment Verification for Online methods (UPI / Cards / NetBanking)
+    const paymentCheck = serverVerified
+      ? {
+          isValid: true,
+          status: 'paid' as const,
+          cleanUtr: transactionId,
+          failureReason: undefined,
+          auditNote: `Server-Verified UPI Payment via ${(paymentApp || 'gpay').toUpperCase()}. Verified on NPCI bank ledger.`
+        }
+      : verifyPaymentDetails(
+          paymentMethod,
+          transactionId || '',
+          submittedAmount || total,
+          total,
+          orders
+        );
+
+    const newOrderId = targetOrderId;
     // Generate secure random 4-digit Delivery Verification OTP (e.g., 4829)
     const generatedDeliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
 
-    const initialPaymentStatus = paymentMethod === 'cod' ? 'pending' : paymentCheck.status;
+    const initialPaymentStatus: 'pending' | 'paid' | 'failed' | 'cancelled' | 'under_review' =
+      paymentMethod === 'cod' ? 'pending' : paymentCheck.status;
     const finalTxnId = paymentCheck.cleanUtr || transactionId || (paymentMethod !== 'cod' ? 'TXN-' + Date.now().toString().slice(-8) : undefined);
 
     const effectivePhone = (customerMobile || currentUser?.phone || '').trim();
@@ -1707,6 +1970,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       total,
       paymentMethod,
       paymentStatus: initialPaymentStatus,
+      paymentApp,
+      paymentReference: paymentRef,
+      paymentVerifiedAt: serverVerified ? nowIso : undefined,
       paymentTransactionId: finalTxnId,
       paymentFailureReason: paymentCheck.isValid ? undefined : paymentCheck.failureReason,
       paymentScreenshotUrl,
@@ -2140,16 +2406,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Store Owner Accept & Confirm Item Stock
   const storeAcceptOrder = (orderId: string) => {
-    const defaultStore: StoreInfo = {
-      id: 'store-saphale-1',
-      name: 'QuickPal Saphale Central Mart',
-      address: 'Shop No. 4, Station Road, Saphale East',
-      area: 'Saphale East',
-      pincode: '401102',
-      contactPhone: '+91 98234 56789',
-      lat: 19.5785,
-      lng: 72.8220
-    };
+    const targetOrder = orders.find(o => o.id === orderId);
+    const firstItemStoreId = targetOrder?.items?.[0]?.product?.storeId;
+    const matchedStore =
+      stores.find(s => currentUser?.storeId && s.id === currentUser.storeId) ||
+      stores.find(s => firstItemStoreId && s.id === firstItemStoreId) ||
+      stores[0] || {
+        id: 'store-saphale-central',
+        name: 'QuickPal Saphale Central Mart',
+        address: 'Shop No. 4, Station Road, Saphale East',
+        area: 'Saphale East',
+        pincode: '401102',
+        contactPhone: '+91 98234 56789',
+        lat: 19.5785,
+        lng: 72.8220
+      };
 
     const nowIso = new Date().toISOString();
 
@@ -2159,7 +2430,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return {
           ...ord,
           status: 'store_accepted',
-          storeInfo: defaultStore,
+          storeInfo: matchedStore,
           storeAcceptedAt: nowIso
         };
       })
@@ -2169,7 +2440,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const orderRef = doc(db, 'orders', orderId);
       updateDoc(orderRef, {
         status: 'store_accepted',
-        storeInfo: defaultStore,
+        storeInfo: cleanFirestoreData(matchedStore),
         storeAcceptedAt: nowIso
       }).catch(err => {
         console.warn('Firestore storeAcceptOrder update error:', err);
@@ -2180,7 +2451,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     sendNotification({
       targetRole: 'partner',
       title: `⚡ Order #${orderId} Ready for Pickup`,
-      message: `Store Owner confirmed item availability for Order #${orderId}! Pick up at ${defaultStore.name}. Tap to Accept delivery task.`,
+      message: `Store Owner confirmed item availability for Order #${orderId}! Pick up at ${matchedStore.name}. Tap to Accept delivery task.`,
       orderId,
       type: 'order'
     });
@@ -2392,6 +2663,76 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return {
       success: true,
       message: `🎉 Order #${orderId} delivered successfully with OTP verification!`
+    };
+  };
+
+  // Submit order rating and feedback after delivery is completed
+  const submitOrderFeedback = (
+    orderId: string,
+    feedbackData: { rating: number; comment?: string; tags?: string[] }
+  ): { success: boolean; message: string } => {
+    const nowIso = new Date().toISOString();
+    const cleanRating = Math.max(1, Math.min(5, Math.round(Number(feedbackData.rating) || 5)));
+    const feedback: OrderFeedback = {
+      rating: cleanRating,
+      comment: feedbackData.comment?.trim() || '',
+      tags: Array.isArray(feedbackData.tags) ? feedbackData.tags : [],
+      submittedAt: nowIso,
+    };
+
+    let targetPartnerId: string | undefined;
+
+    setOrders(prev =>
+      prev.map(ord => {
+        if (ord.id !== orderId) return ord;
+        targetPartnerId = ord.deliveryPartnerId || ord.assignedPartnerId;
+        return {
+          ...ord,
+          feedback,
+        };
+      })
+    );
+
+    // Persist to Firestore if initialized
+    if (db) {
+      try {
+        const orderRef = doc(db, 'orders', orderId);
+        updateDoc(orderRef, { feedback }).catch(err => {
+          console.warn('Firestore feedback update notice:', err);
+        });
+      } catch (err) {
+        console.warn('Firestore feedback update error:', err);
+      }
+    }
+
+    // Update delivery partner rating stats if order had an assigned partner
+    if (targetPartnerId) {
+      setPartners(prev =>
+        prev.map(p => {
+          if (p.id === targetPartnerId) {
+            const currentRating = p.rating || 4.8;
+            const updatedRating = Number(((currentRating * 4 + cleanRating) / 5).toFixed(1));
+            return {
+              ...p,
+              rating: updatedRating,
+            };
+          }
+          return p;
+        })
+      );
+    }
+
+    sendNotification({
+      targetRole: 'admin',
+      title: `⭐ Order Feedback Received #${orderId}`,
+      message: `Customer rated order #${orderId} with ${cleanRating} stars.${feedback.comment ? ` "${feedback.comment}"` : ''}`,
+      orderId,
+      type: 'order'
+    });
+
+    return {
+      success: true,
+      message: 'Thank you for rating your delivery experience!'
     };
   };
 
@@ -2923,6 +3264,197 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   };
 
+  // Multi-Store Registration & Management (Admin / Owner)
+  const registerStore = async (storeData: Partial<StoreInfo>): Promise<{ success: boolean; message: string; store?: StoreInfo }> => {
+    const storeName = (storeData.name || '').trim();
+    if (!storeName) {
+      return { success: false, message: 'Store name is required.' };
+    }
+
+    const slug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 12) || 'store';
+    const randSuffix = Math.floor(100 + Math.random() * 900);
+    const loginId = (storeData.loginId || `store_${slug}_${randSuffix}`).trim().toLowerCase();
+    const password = (storeData.password || `QP@${slug.slice(0, 4)}${randSuffix}`).trim();
+    const storeId = `store-${slug}-${Date.now().toString(36)}`;
+    const ownerEmail = (storeData.ownerEmail || `${loginId}@storequickpal.in`).trim().toLowerCase();
+
+    if (stores.some(s => s.loginId?.toLowerCase() === loginId)) {
+      return { success: false, message: `Login ID "${loginId}" is already assigned to another store.` };
+    }
+
+    const newStore: StoreInfo = {
+      id: storeId,
+      name: storeName,
+      address: storeData.address?.trim() || 'Station Road, Saphale, 401102',
+      area: storeData.area?.trim() || 'Saphale East',
+      pincode: storeData.pincode?.trim() || '401102',
+      contactPhone: storeData.contactPhone?.trim() || storeData.ownerPhone?.trim() || '+91 98000 00000',
+      lat: storeData.lat || 19.5785,
+      lng: storeData.lng || 72.8220,
+      ownerName: storeData.ownerName?.trim() || `${storeName} Owner`,
+      ownerEmail,
+      ownerPhone: storeData.ownerPhone?.trim() || storeData.contactPhone?.trim() || '',
+      loginId,
+      password,
+      categorySpecialty: storeData.categorySpecialty?.trim() || 'Groceries, Fresh Produce & Essentials',
+      rating: 4.8,
+      reviewsCount: 1,
+      image: storeData.image?.trim() || 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=600&q=80',
+      deliveryTimeMins: Number(storeData.deliveryTimeMins) || 25,
+      isActive: storeData.isActive !== undefined ? storeData.isActive : true,
+      createdAt: new Date().toISOString(),
+      totalSales: 0
+    };
+
+    setStores(prev => [newStore, ...prev]);
+
+    if (db) {
+      setDoc(doc(db, 'stores', newStore.id), cleanFirestoreData(newStore)).catch(e =>
+        console.warn('Firestore registerStore error:', e)
+      );
+    }
+
+    // Also create a corresponding AppUser account with role 'store'
+    const storeAccountUser: AppUser = {
+      id: `store-user-${newStore.id}`,
+      name: newStore.ownerName || newStore.name,
+      role: 'store',
+      username: loginId,
+      email: ownerEmail,
+      phone: newStore.contactPhone,
+      password,
+      status: 'ACTIVE',
+      isActive: true,
+      isVerified: true,
+      storeId: newStore.id,
+      serviceArea: `${newStore.area} (${newStore.pincode})`,
+      createdAt: newStore.createdAt!
+    };
+
+    setUsers(prev => [storeAccountUser, ...prev.filter(u => u.id !== storeAccountUser.id)]);
+    if (db) {
+      setDoc(doc(db, 'users', storeAccountUser.id), cleanFirestoreData(storeAccountUser)).catch(e =>
+        console.warn('Firestore store user sync error:', e)
+      );
+    }
+
+    return {
+      success: true,
+      message: `Store "${newStore.name}" registered! Login ID: ${loginId} | Password: ${password}`,
+      store: newStore
+    };
+  };
+
+  const updateStore = async (id: string, updates: Partial<StoreInfo>): Promise<{ success: boolean; message: string }> => {
+    const existing = stores.find(s => s.id === id);
+    if (!existing) return { success: false, message: 'Store not found.' };
+
+    const cleanUpdates: Partial<StoreInfo> = { ...updates };
+    if (typeof cleanUpdates.name === 'string') cleanUpdates.name = cleanUpdates.name.trim();
+    if (typeof cleanUpdates.ownerName === 'string') cleanUpdates.ownerName = cleanUpdates.ownerName.trim();
+    if (typeof cleanUpdates.area === 'string') cleanUpdates.area = cleanUpdates.area.trim();
+    if (typeof cleanUpdates.address === 'string') cleanUpdates.address = cleanUpdates.address.trim();
+    if (typeof cleanUpdates.pincode === 'string') cleanUpdates.pincode = cleanUpdates.pincode.trim();
+    if (typeof cleanUpdates.contactPhone === 'string') {
+      cleanUpdates.contactPhone = cleanUpdates.contactPhone.trim();
+      cleanUpdates.ownerPhone = cleanUpdates.contactPhone;
+    }
+    if (typeof cleanUpdates.categorySpecialty === 'string') {
+      cleanUpdates.categorySpecialty = cleanUpdates.categorySpecialty.trim();
+    }
+    if (typeof cleanUpdates.loginId === 'string') {
+      const normalizedLoginId = cleanUpdates.loginId.trim().toLowerCase();
+      if (!normalizedLoginId) {
+        return { success: false, message: 'Login ID cannot be empty.' };
+      }
+      if (stores.some(s => s.id !== id && s.loginId?.toLowerCase() === normalizedLoginId)) {
+        return { success: false, message: `Login ID "${normalizedLoginId}" is already assigned to another store.` };
+      }
+      cleanUpdates.loginId = normalizedLoginId;
+    }
+    if (typeof cleanUpdates.password === 'string') {
+      const trimmedPwd = cleanUpdates.password.trim();
+      if (!trimmedPwd) {
+        return { success: false, message: 'Password cannot be empty.' };
+      }
+      cleanUpdates.password = trimmedPwd;
+    }
+
+    const updatedStore: StoreInfo = { ...existing, ...cleanUpdates };
+    setStores(prev => prev.map(s => s.id === id ? updatedStore : s));
+
+    if (updatedStore.isActive === false && selectedStoreId === id) {
+      setSelectedStoreId(null);
+    }
+
+    if (db) {
+      setDoc(doc(db, 'stores', id), cleanFirestoreData(updatedStore), { merge: true }).catch(e =>
+        console.warn('Firestore updateStore error:', e)
+      );
+    }
+
+    // Cascade store name change to all products assigned to this store
+    if (cleanUpdates.name && cleanUpdates.name !== existing.name) {
+      const matchingProds = products.filter(p => p.storeId === id);
+      if (matchingProds.length > 0) {
+        setProducts(prev => prev.map(p => (p.storeId === id ? { ...p, storeName: updatedStore.name } : p)));
+        if (db) {
+          matchingProds.forEach(p => {
+            updateDoc(doc(db, 'products', p.id), { storeName: updatedStore.name }).catch(err =>
+              console.warn('Firestore product storeName cascade error:', err)
+            );
+          });
+        }
+      }
+    }
+
+    // Sync corresponding store AppUser record (name, loginId, password, active status, contact)
+    const isNowActive = updatedStore.isActive !== false;
+    const syncedStatus: 'ACTIVE' | 'INACTIVE' = isNowActive ? 'ACTIVE' : 'INACTIVE';
+    const userUpdates = {
+      name: updatedStore.ownerName || updatedStore.name,
+      username: updatedStore.loginId,
+      password: updatedStore.password,
+      phone: updatedStore.contactPhone,
+      isActive: isNowActive,
+      status: syncedStatus,
+      serviceArea: `${updatedStore.area} (${updatedStore.pincode})`
+    };
+
+    const linkedUsers = users.filter(u => u.id === `store-user-${id}` || (u.role === 'store' && u.storeId === id));
+    if (linkedUsers.length > 0) {
+      setUsers(prev =>
+        prev.map(u =>
+          u.id === `store-user-${id}` || (u.role === 'store' && u.storeId === id)
+            ? { ...u, ...userUpdates }
+            : u
+        )
+      );
+      if (db) {
+        linkedUsers.forEach(u => {
+          updateDoc(doc(db, 'users', u.id), cleanFirestoreData(userUpdates)).catch(err =>
+            console.warn('Firestore linked store user sync error:', err)
+          );
+        });
+      }
+    }
+
+    return { success: true, message: `Updated store "${updatedStore.name}".` };
+  };
+
+  const deleteStore = async (id: string): Promise<{ success: boolean; message: string }> => {
+    setStores(prev => prev.filter(s => s.id !== id));
+    if (selectedStoreId === id) {
+      setSelectedStoreId(null);
+    }
+    if (db) {
+      deleteDoc(doc(db, 'stores', id)).catch(e =>
+        console.warn('Firestore deleteStore error:', e)
+      );
+    }
+    return { success: true, message: 'Store removed.' };
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -2970,6 +3502,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSearchQuery,
         themeMode,
         toggleTheme,
+        isDiwaliTheme,
+        setIsDiwaliTheme,
+        toggleDiwaliTheme,
         appliedCoupon,
         applyCoupon,
         removeCoupon,
@@ -2980,6 +3515,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         storeAcceptOrder,
         updateOrderStatusByAdmin,
         completeDeliveryWithOtp,
+        submitOrderFeedback,
         addProduct,
         updateProduct,
         updateProductStock,
@@ -3018,6 +3554,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         voteFAQHelpful,
         submitSupportTicket,
         updateTicketStatus,
+        stores,
+        registerStore,
+        updateStore,
+        deleteStore,
+        selectedStoreId,
+        setSelectedStoreId,
         emailAlertLogs,
         sendTestAlertEmail
       }}

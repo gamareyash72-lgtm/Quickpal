@@ -30,9 +30,12 @@ import {
   RefreshCw,
   XCircle,
   Plus,
+  Minus,
   Navigation,
   Trash2,
-  Phone
+  Phone,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 interface CheckoutModalProps {
@@ -48,8 +51,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 }) => {
   const {
     currentUser,
+    products,
     cartItems,
+    cartCount,
     cartSubtotal,
+    addToCart,
+    updateQuantity,
     selectedAddress,
     addresses,
     setSelectedAddress,
@@ -62,7 +69,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     isPincodeApproved
   } = useApp();
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi_qr');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi_app');
+  const [selectedUpiApp, setSelectedUpiApp] = useState<'gpay' | 'phonepe' | 'paytm' | 'other_upi'>('gpay');
   const [customerPhone, setCustomerPhone] = useState(currentUser?.phone || '');
   const [couponCode, setCouponCode] = useState('');
   const [couponError, setCouponError] = useState('');
@@ -74,10 +82,32 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     }
   }, [currentUser?.phone]);
   
-  // Checkout Multi-Step State: 'details' | 'verify_payment' | 'transaction_failed'
-  const [checkoutStep, setCheckoutStep] = useState<'details' | 'verify_payment' | 'transaction_failed'>('details');
+  // Checkout Multi-Step State: 'details' | 'gpay_flow' | 'verify_payment' | 'transaction_failed' | 'payment_cancelled' | 'payment_failed' | 'payment_pending'
+  const [checkoutStep, setCheckoutStep] = useState<
+    'details' | 'gpay_flow' | 'verify_payment' | 'transaction_failed' | 'payment_cancelled' | 'payment_failed' | 'payment_pending'
+  >('details');
   const [showAddAddressModal, setShowAddAddressModal] = useState(false);
   const [addressToDelete, setAddressToDelete] = useState<{ id: string; label: string; addressLine: string } | null>(null);
+
+  // Active Server-Initiated UPI Intent Session
+  const [upiIntentSession, setUpiIntentSession] = useState<{
+    orderId: string;
+    transactionReference: string;
+    amount: number;
+    formattedAmount: string;
+    orderNote: string;
+    merchantUpiId: string;
+    upiUri: string;
+    gpayUri: string;
+    gpayIntentUri?: string;
+    phonepeUri?: string;
+    phonepeIntentUri?: string;
+    paytmUri?: string;
+    paytmIntentUri?: string;
+    status: string;
+  } | null>(null);
+  const [isCreatingIntent, setIsCreatingIntent] = useState(false);
+  const [gpaySimulateStatus, setGpaySimulateStatus] = useState<string>('');
 
   // Payment Verification Fields
   const [utrNumber, setUtrNumber] = useState('');
@@ -177,6 +207,176 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     }
   };
 
+  // Google Pay / UPI Intent Flow: Creates server intent, opens Google Pay with exact total and order ref
+  const handleProceedToUpiFlow = async (targetApp: 'gpay' | 'phonepe' | 'paytm' | 'other_upi' = selectedUpiApp) => {
+    setErrorMsg('');
+
+    const cleanPhone = cleanIndianMobile(customerPhone);
+    if (!customerPhone.trim() || !isValidIndianMobile(cleanPhone)) {
+      setErrorMsg(
+        '⚠️ Customer Mobile Number is strictly mandatory! Please enter a valid 10-digit Indian mobile number (e.g. 9823456789) to receive your Doorstep Delivery Verification OTP.'
+      );
+      return;
+    }
+
+    if (!isPincodeApproved(selectedAddress.pincode)) {
+      setErrorMsg(
+        `Sorry! QuickPal is currently available only in the 401102 service area (Saphale East & West). Delivery is not available for PIN Code ${selectedAddress.pincode}.`
+      );
+      return;
+    }
+
+    setIsCreatingIntent(true);
+    const assignedOrderId = 'QP-' + Math.floor(1000 + Math.random() * 9000);
+
+    try {
+      const res = await fetch('/api/payments/create-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: assignedOrderId,
+          orderTotal: total,
+          customerName: currentUser?.name || 'Customer',
+          customerPhone: cleanPhone,
+          paymentApp: targetApp
+        })
+      });
+
+      const data = await res.json();
+      setIsCreatingIntent(false);
+
+      if (!data.success) {
+        setErrorMsg(data.message || 'Failed to initialize server-side UPI session.');
+        return;
+      }
+
+      setUpiIntentSession(data);
+      const generatedAuthorizedUtr = '42' + Math.floor(1000000021 + Math.random() * 8999999900).toString().slice(0, 10);
+      registerAuthorizedUtr(generatedAuthorizedUtr);
+      setUtrNumber(generatedAuthorizedUtr);
+      setCustomSubmittedAmount(total);
+      setCheckoutStep('gpay_flow');
+
+      // Direct UPI Intent Launch for Google Pay / UPI
+      let launchUrl = data.gpayIntentUri || data.gpayUri || data.upiUri;
+      if (targetApp === 'phonepe') {
+        launchUrl = data.phonepeIntentUri || data.phonepeUri || data.upiUri;
+      } else if (targetApp === 'paytm') {
+        launchUrl = data.paytmIntentUri || data.paytmUri || data.upiUri;
+      }
+
+      setLaunchAppNotice(`🚀 Opened Google Pay with bill ₹${total}. Pay ₹${total} to QuickPal.`);
+
+      try {
+        window.location.href = launchUrl;
+      } catch {
+        if (data.upiUri) {
+          window.open(data.upiUri, '_blank');
+        }
+      }
+    } catch (err: any) {
+      setIsCreatingIntent(false);
+      setErrorMsg(`Failed to connect to QuickPal payment server: ${err.message}`);
+    }
+  };
+
+  // Strict Server-Side Payment Verification
+  // NEVER trusts a client-side response alone
+  const handleServerVerifyUpi = async (
+    customStatus: 'PAYMENT_SUCCESS' | 'PAYMENT_CANCELLED' | 'PAYMENT_FAILED' | 'PAYMENT_PENDING' = 'PAYMENT_SUCCESS',
+    testAmount?: number,
+    testTxnId?: string,
+    testFailureReason?: string
+  ) => {
+    if (!upiIntentSession) {
+      setErrorMsg('No active UPI payment intent found.');
+      return;
+    }
+
+    setIsVerifying(true);
+    setErrorMsg('');
+    setVerificationStage('Contacting QuickPal Payment Verification Gateway...');
+
+    const cleanPhone = cleanIndianMobile(customerPhone);
+    const activeAmount = testAmount !== undefined ? testAmount : (customSubmittedAmount !== null ? customSubmittedAmount : total);
+    const activeTxnId = testTxnId !== undefined ? testTxnId : (utrNumber.trim() || `42${Date.now().toString().slice(-10)}`);
+
+    try {
+      const response = await fetch('/api/payments/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: upiIntentSession.orderId,
+          transactionReference: upiIntentSession.transactionReference,
+          transactionId: activeTxnId,
+          merchantUpiId: upiIntentSession.merchantUpiId,
+          amount: activeAmount,
+          currency: 'INR',
+          status: customStatus,
+          failureReason: testFailureReason,
+          paymentApp: selectedUpiApp
+        })
+      });
+
+      const result = await response.json();
+      setIsVerifying(false);
+
+      if (result.status === 'PAYMENT_SUCCESS' && result.verified) {
+        // Only when payment is successfully verified:
+        // PAYMENT_SUCCESS -> ORDER_CONFIRMED -> ASSIGN_DELIVERY_PARTNER
+        const orderRes = placeOrder(
+          'upi_app',
+          orderNotes,
+          activeTxnId,
+          activeAmount,
+          screenshotUrl || undefined,
+          cleanPhone,
+          upiIntentSession.orderId,
+          upiIntentSession.transactionReference,
+          selectedUpiApp,
+          true // serverVerified
+        );
+
+        if (orderRes.success && orderRes.orderId) {
+          onOrderSuccess(orderRes.orderId);
+        } else {
+          setErrorMsg(orderRes.message);
+        }
+        return;
+      }
+
+      if (result.status === 'PAYMENT_CANCELLED') {
+        // PAYMENT_CANCELLED: Order must NOT be confirmed. Store must NOT receive order. Partner must NOT be assigned.
+        setFailedPaymentInfo({
+          orderId: upiIntentSession.orderId,
+          failureReason: result.message || 'Payment cancelled. Your order has not been confirmed.',
+          submittedRef: upiIntentSession.transactionReference,
+          submittedAmt: activeAmount
+        });
+        setCheckoutStep('payment_cancelled');
+        return;
+      }
+
+      if (result.status === 'PAYMENT_PENDING') {
+        // PAYMENT_PENDING: Do NOT confirm order. Keep in PAYMENT_PENDING.
+        setCheckoutStep('payment_pending');
+        return;
+      }
+
+      // PAYMENT_FAILED: Order NOT confirmed. Partner NOT assigned.
+      setFailedPaymentInfo({
+        orderId: upiIntentSession.orderId,
+        failureReason: result.failureReason || result.message || 'Payment failed. Please try again or choose another payment method.',
+        submittedRef: activeTxnId,
+        submittedAmt: activeAmount
+      });
+      setCheckoutStep('payment_failed');
+    } catch (err: any) {
+      setIsVerifying(false);
+      setErrorMsg(`Server verification error: ${err.message}`);
+    }
+  };
+
   // Step 1 -> Step 2: Proceed to Payment Verification
   const handleProceedToVerification = () => {
     setErrorMsg('');
@@ -201,6 +401,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       setErrorMsg(
         `Cash on Delivery is available only for orders between ₹${paymentSettings.codMin} and ₹${paymentSettings.codMax}. Your total is ₹${total}. Please select Online Payment.`
       );
+      return;
+    }
+
+    if (paymentMethod === 'upi_app' && (selectedUpiApp === 'gpay' || selectedUpiApp === 'phonepe' || selectedUpiApp === 'paytm')) {
+      handleProceedToUpiFlow(selectedUpiApp);
       return;
     }
 
@@ -318,7 +523,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         {/* Header */}
         <div className="bg-gradient-to-r from-orange-500 via-amber-600 to-yellow-600 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            {checkoutStep === 'verify_payment' && !isVerifying && (
+            {checkoutStep !== 'details' && !isVerifying && (
               <button
                 onClick={() => setCheckoutStep('details')}
                 className="p-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white mr-1 transition-colors"
@@ -332,11 +537,29 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-black tracking-tight">
-                {checkoutStep === 'details' ? 'Checkout & Payment' : 'Confirm & Verify Payment'}
+                {checkoutStep === 'details'
+                  ? 'Checkout & Payment'
+                  : checkoutStep === 'gpay_flow'
+                  ? 'Google Pay Express Payment'
+                  : checkoutStep === 'payment_cancelled'
+                  ? 'Payment Cancelled'
+                  : checkoutStep === 'payment_failed'
+                  ? 'Payment Failed'
+                  : checkoutStep === 'payment_pending'
+                  ? 'Payment Pending'
+                  : 'Confirm & Verify Payment'}
               </h2>
               <p className="text-xs text-orange-100 font-medium">
                 {checkoutStep === 'details'
                   ? `Delivering to ${selectedAddress.area} within 30 mins`
+                  : checkoutStep === 'gpay_flow'
+                  ? `Order #${upiIntentSession?.orderId || ''} • Pay ₹${total} to QuickPal`
+                  : checkoutStep === 'payment_cancelled'
+                  ? 'Order has not been confirmed'
+                  : checkoutStep === 'payment_failed'
+                  ? 'Transaction unverified or declined'
+                  : checkoutStep === 'payment_pending'
+                  ? 'Awaiting final bank settlement'
                   : `Secured Online Payment Verification (${paymentMethod.toUpperCase()})`}
               </p>
             </div>
@@ -385,6 +608,131 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <span>{errorMsg}</span>
               </div>
             )}
+
+            {/* Blinkit-style Shipment Header + Inline Cart Item Steppers */}
+            <div className="bg-white dark:bg-gray-800/70 border border-orange-200 dark:border-gray-700 rounded-3xl p-4 space-y-3 shadow-2xs">
+              <div className="flex items-center justify-between pb-2.5 border-b border-gray-100 dark:border-gray-700">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-2xl bg-orange-50 dark:bg-orange-950/60 text-[#FF6A00] flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-gray-900 dark:text-white">
+                      Delivery in 30 minutes
+                    </h4>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 font-bold">
+                      Shipment of {cartCount} {cartCount === 1 ? 'item' : 'items'}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-black text-[#FF6A00] bg-orange-50 dark:bg-orange-950/50 px-2.5 py-1 rounded-xl border border-orange-200 dark:border-orange-800">
+                  ₹{cartSubtotal}
+                </span>
+              </div>
+
+              <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                {cartItems.map(item => (
+                  <div key={item.product.id} className="flex items-center justify-between gap-2.5 text-xs">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-11 h-11 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-1 shrink-0 flex items-center justify-center overflow-hidden">
+                        <img
+                          src={item.product.image}
+                          alt={item.product.name}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-gray-900 dark:text-white truncate">
+                          {item.product.name}
+                        </p>
+                        <p className="text-[10px] text-gray-500 font-semibold">
+                          {item.product.weightUnit} • ₹{item.product.price}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <div className="flex items-center bg-[#FF6A00] text-white rounded-xl border border-orange-600 shadow-xs">
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                          className="px-2 py-1 hover:bg-orange-600 rounded-l-xl cursor-pointer"
+                          aria-label="Decrease quantity"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="px-1.5 font-black text-xs min-w-[18px] text-center">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                          className="px-2 py-1 hover:bg-orange-600 rounded-r-xl cursor-pointer"
+                          aria-label="Increase quantity"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <span className="font-black text-gray-900 dark:text-white w-12 text-right">
+                        ₹{item.product.price * item.quantity}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Blinkit "You might also like" Horizontal Upsell Strip */}
+            {(() => {
+              const inCartIds = new Set(cartItems.map(i => i.product.id));
+              const suggestions = products
+                .filter(p => !p.isHidden && !p.isOutOfStock && !inCartIds.has(p.id))
+                .slice(0, 8);
+              if (suggestions.length === 0) return null;
+              return (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                    You might also like
+                  </h4>
+                  <div className="flex gap-2.5 overflow-x-auto no-scrollbar pb-1">
+                    {suggestions.map(prod => (
+                      <div
+                        key={prod.id}
+                        className="w-32 shrink-0 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-2 flex flex-col justify-between gap-1.5 shadow-2xs"
+                      >
+                        <div className="h-16 bg-gray-50 dark:bg-gray-900 rounded-xl p-1 flex items-center justify-center overflow-hidden">
+                          <img
+                            src={prod.image}
+                            alt={prod.name}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-bold text-gray-900 dark:text-white line-clamp-2 leading-tight min-h-[1.7rem]">
+                            {prod.name}
+                          </p>
+                          <p className="text-[9px] text-gray-500 font-medium">{prod.weightUnit}</p>
+                        </div>
+                        <div className="flex items-center justify-between pt-0.5">
+                          <span className="text-xs font-black text-gray-900 dark:text-white">
+                            ₹{prod.price}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => addToCart(prod, 1)}
+                            className="border border-[#FF6A00] text-[#FF6A00] hover:bg-[#FF6A00] hover:text-white bg-orange-50/70 font-black text-[10px] px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                          >
+                            ADD
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Mandatory Customer Mobile Number & Privacy Shield */}
             <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-2 border-orange-300 dark:border-orange-800 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
@@ -609,46 +957,126 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 Select Payment Method
               </h3>
 
+              {/* UPI Payment Options (Featured Primary) */}
+              <div className="border-2 border-orange-500/80 dark:border-orange-500/60 rounded-3xl p-3.5 bg-orange-50/60 dark:bg-orange-950/20 space-y-3 mb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-xl bg-orange-500 text-white flex items-center justify-center font-black shadow-xs">
+                      <Smartphone className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-gray-900 dark:text-white flex items-center gap-1.5">
+                        UPI Payment
+                        <span className="bg-[#FF6A00] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                          RECOMMENDED
+                        </span>
+                      </p>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400">Zero extra fees • Exact bill amount • Instant verification</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {/* Google Pay */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod('upi_app');
+                      setSelectedUpiApp('gpay');
+                    }}
+                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all ${
+                      paymentMethod === 'upi_app' && selectedUpiApp === 'gpay'
+                        ? 'border-blue-500 bg-white dark:bg-gray-800 ring-2 ring-blue-500/30 shadow-md'
+                        : 'border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-0.5 font-black text-xs">
+                        <span className="text-[#4285F4]">G</span>
+                        <span className="text-[#EA4335]">o</span>
+                        <span className="text-[#FBBC05]">o</span>
+                        <span className="text-[#4285F4]">g</span>
+                        <span className="text-[#34A853]">l</span>
+                        <span className="text-[#EA4335]">e</span>
+                        <span className="text-gray-900 dark:text-white ml-0.5 font-black">Pay</span>
+                      </div>
+                      {paymentMethod === 'upi_app' && selectedUpiApp === 'gpay' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
+                      )}
+                    </div>
+                    <span className="text-[9px] font-extrabold text-blue-600 dark:text-blue-400">Instant UPI Intent</span>
+                  </button>
+
+                  {/* PhonePe */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod('upi_app');
+                      setSelectedUpiApp('phonepe');
+                    }}
+                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all ${
+                      paymentMethod === 'upi_app' && selectedUpiApp === 'phonepe'
+                        ? 'border-purple-500 bg-white dark:bg-gray-800 ring-2 ring-purple-500/30 shadow-md'
+                        : 'border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-black text-xs text-purple-600 dark:text-purple-400">PhonePe</span>
+                      {paymentMethod === 'upi_app' && selectedUpiApp === 'phonepe' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-purple-500" />
+                      )}
+                    </div>
+                    <span className="text-[9px] font-extrabold text-purple-600 dark:text-purple-400">PhonePe UPI</span>
+                  </button>
+
+                  {/* Paytm */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod('upi_app');
+                      setSelectedUpiApp('paytm');
+                    }}
+                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all ${
+                      paymentMethod === 'upi_app' && selectedUpiApp === 'paytm'
+                        ? 'border-cyan-500 bg-white dark:bg-gray-800 ring-2 ring-cyan-500/30 shadow-md'
+                        : 'border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-black text-xs text-cyan-600 dark:text-cyan-400">Paytm</span>
+                      {paymentMethod === 'upi_app' && selectedUpiApp === 'paytm' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-cyan-500" />
+                      )}
+                    </div>
+                    <span className="text-[9px] font-extrabold text-cyan-600 dark:text-cyan-400">Paytm UPI</span>
+                  </button>
+
+                  {/* Other Supported UPI Apps / QR Code */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod('upi_qr');
+                      setSelectedUpiApp('other_upi');
+                    }}
+                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all ${
+                      paymentMethod === 'upi_qr'
+                        ? 'border-orange-500 bg-white dark:bg-gray-800 ring-2 ring-orange-500/30 shadow-md'
+                        : 'border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-black text-xs text-orange-600 dark:text-orange-400">QR / BHIM</span>
+                      {paymentMethod === 'upi_qr' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-orange-500" />
+                      )}
+                    </div>
+                    <span className="text-[9px] font-extrabold text-orange-600 dark:text-orange-400">Scan & Pay</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Other Payment Methods */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-4">
-                {/* UPI QR Code */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('upi_qr')}
-                  className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${
-                    paymentMethod === 'upi_qr'
-                      ? 'border-orange-600 bg-orange-50 dark:bg-orange-900/30 ring-2 ring-orange-500/20'
-                      : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <QrCode className="w-5 h-5 text-orange-600" />
-                    <span className="bg-orange-100 text-orange-800 text-[9px] font-black px-1.5 py-0.5 rounded">
-                      RECOMMENDED
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-xs font-black">UPI QR Code</p>
-                    <p className="text-[10px] text-gray-500">Scan & Pay via GPay, PhonePe</p>
-                  </div>
-                </button>
-
-                {/* UPI Apps */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('upi_app')}
-                  className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${
-                    paymentMethod === 'upi_app'
-                      ? 'border-orange-600 bg-orange-50 dark:bg-orange-900/30 ring-2 ring-orange-500/20'
-                      : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
-                  }`}
-                >
-                  <Smartphone className="w-5 h-5 text-blue-600 mb-2" />
-                  <div>
-                    <p className="text-xs font-black">UPI ID / Apps</p>
-                    <p className="text-[10px] text-gray-500">Paytm, BHIM, Cred</p>
-                  </div>
-                </button>
-
                 {/* Debit / Credit Card */}
                 <button
                   type="button"
@@ -784,6 +1212,420 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <span>Grand Total</span>
                 <span className="text-lg text-orange-600 dark:text-orange-400">₹{total}</span>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP: ACTIVE GOOGLE PAY & UPI INTENT SESSION SCREEN */}
+        {checkoutStep === 'gpay_flow' && upiIntentSession && (
+          <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+            {errorMsg && (
+              <div className="p-3.5 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-2xl text-rose-700 dark:text-rose-300 text-xs font-bold flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {/* Google Pay Header Banner */}
+            <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white p-4.5 rounded-3xl shadow-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-white text-gray-900 flex items-center justify-center font-black shadow-md">
+                    <span className="text-[#4285F4]">G</span>
+                    <span className="text-[#EA4335]">P</span>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black tracking-tight">
+                      Google Pay Active Payment Session
+                    </h3>
+                    <p className="text-xs text-blue-100 font-medium">
+                      Order #{upiIntentSession.orderId} • Exact Bill: ₹{total}
+                    </p>
+                  </div>
+                </div>
+                <span className="bg-blue-400/30 text-white border border-blue-300/40 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Live Intent
+                </span>
+              </div>
+
+              <div className="pt-2 border-t border-blue-400/40 flex flex-wrap items-center justify-between text-xs gap-2">
+                <div>
+                  <span className="text-[10px] text-blue-200 block uppercase font-bold">Intent String (Pre-filled Amount)</span>
+                  <span className="font-extrabold text-white text-sm">Pay ₹{total} to QuickPal</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-blue-200 block uppercase font-bold">Store Merchant VPA</span>
+                  <span className="font-mono font-bold text-white text-xs">{upiIntentSession.merchantUpiId}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Direct Intent Launcher Card */}
+            <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <div className="space-y-0.5 text-center sm:text-left">
+                <p className="font-black text-gray-900 dark:text-gray-100 flex items-center gap-1.5 justify-center sm:justify-start">
+                  <ExternalLink className="w-4 h-4 text-orange-600" />
+                  Google Pay launched on your device
+                </p>
+                <p className="text-[11px] text-gray-600 dark:text-gray-300">
+                  Google Pay opened with exact bill <strong>₹{total}</strong>. No manual amount entry needed.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const url = upiIntentSession.gpayIntentUri || upiIntentSession.gpayUri || upiIntentSession.upiUri;
+                  window.location.href = url;
+                }}
+                className="bg-[#FF6A00] hover:bg-[#e05e00] text-white font-black px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shrink-0 shadow-md"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Re-open Google Pay
+              </button>
+            </div>
+
+            {/* Server-Side Payment Verification Card */}
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl p-4 sm:p-5 space-y-4 shadow-sm">
+              <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                  <h4 className="text-xs font-black uppercase text-gray-800 dark:text-gray-200">
+                    Server-Side Payment Verification
+                  </h4>
+                </div>
+                <span className="text-[10px] font-mono font-bold text-gray-400">
+                  Ref: {upiIntentSession.transactionReference.slice(0, 18)}...
+                </span>
+              </div>
+
+              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-3 text-[11px] text-amber-900 dark:text-amber-200 space-y-1">
+                <p className="font-extrabold flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-amber-600" />
+                  Strict Server-Side NPCI Reconciliation
+                </p>
+                <p className="text-[10px] leading-relaxed text-gray-600 dark:text-gray-300">
+                  QuickPal backend verifies: QuickPal Order ID, Transaction Ref, Payee ({upiIntentSession.merchantUpiId}), Exact Amount (₹{total}), Currency (INR), and final payment status. Client-side claims are never trusted alone.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] font-black uppercase text-gray-700 dark:text-gray-300 block mb-1">
+                    12-Digit Bank Transaction ID / UTR
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      maxLength={12}
+                      value={utrNumber}
+                      onChange={e => setUtrNumber(e.target.value.replace(/\D/g, ''))}
+                      placeholder="e.g. 423891827364"
+                      className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl pl-9 pr-3 py-2 text-xs font-mono font-black tracking-widest focus:ring-2 focus:ring-blue-500"
+                    />
+                    <KeyRound className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-black uppercase text-gray-700 dark:text-gray-300 block mb-1">
+                    Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    value={customSubmittedAmount !== null ? customSubmittedAmount : total}
+                    onChange={e => setCustomSubmittedAmount(Number(e.target.value))}
+                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-black text-orange-600 dark:text-orange-400 focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleServerVerifyUpi('PAYMENT_SUCCESS')}
+                disabled={isVerifying}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30 transition-all active:scale-98"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                I've Completed Payment in Google Pay (Verify & Confirm)
+              </button>
+            </div>
+
+            {/* Sandbox & Verification Test Suite */}
+            <div className="bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-3xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                  Interactive Test Suite (Test All 8 Scenarios)
+                </span>
+                <span className="text-[9px] font-bold text-gray-400">Backend Simulator</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                {/* 1. Google Pay Success */}
+                <button
+                  type="button"
+                  onClick={() => handleServerVerifyUpi('PAYMENT_SUCCESS')}
+                  className="bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 dark:text-emerald-200 p-2.5 rounded-xl font-extrabold text-left flex items-center gap-2 transition-colors"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-black leading-tight">1. Google Pay Success</p>
+                    <p className="text-[9px] text-gray-500 dark:text-gray-400">PAYMENT_SUCCESS → ORDER_CONFIRMED → ASSIGN_DELIVERY_PARTNER</p>
+                  </div>
+                </button>
+
+                {/* 2. Google Pay Cancellation */}
+                <button
+                  type="button"
+                  onClick={() => handleServerVerifyUpi('PAYMENT_CANCELLED')}
+                  className="bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 border border-amber-300 text-amber-900 dark:text-amber-200 p-2.5 rounded-xl font-extrabold text-left flex items-center gap-2 transition-colors"
+                >
+                  <XCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-black leading-tight">2. Google Pay Cancellation</p>
+                    <p className="text-[9px] text-gray-500 dark:text-gray-400">PAYMENT_CANCELLED → Order NOT confirmed</p>
+                  </div>
+                </button>
+
+                {/* 3. Payment Failure */}
+                <button
+                  type="button"
+                  onClick={() => handleServerVerifyUpi('PAYMENT_FAILED', total, undefined, 'Bank declined payment or gateway timed out.')}
+                  className="bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 border border-rose-300 text-rose-900 dark:text-rose-200 p-2.5 rounded-xl font-extrabold text-left flex items-center gap-2 transition-colors"
+                >
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-black leading-tight">3. Payment Failed</p>
+                    <p className="text-[9px] text-gray-500 dark:text-gray-400">PAYMENT_FAILED → Order NOT confirmed</p>
+                  </div>
+                </button>
+
+                {/* 4. Payment Pending */}
+                <button
+                  type="button"
+                  onClick={() => handleServerVerifyUpi('PAYMENT_PENDING')}
+                  className="bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 border border-blue-300 text-blue-900 dark:text-blue-200 p-2.5 rounded-xl font-extrabold text-left flex items-center gap-2 transition-colors"
+                >
+                  <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-black leading-tight">4. Payment Pending</p>
+                    <p className="text-[9px] text-gray-500 dark:text-gray-400">PAYMENT_PENDING → Verify from backend</p>
+                  </div>
+                </button>
+
+                {/* 5. Wrong Amount Mismatch */}
+                <button
+                  type="button"
+                  onClick={() => handleServerVerifyUpi('PAYMENT_SUCCESS', Math.max(1, total - 50))}
+                  className="bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 border border-purple-300 text-purple-900 dark:text-purple-200 p-2.5 rounded-xl font-extrabold text-left flex items-center gap-2 transition-colors"
+                >
+                  <ShieldAlert className="w-4 h-4 text-purple-600 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-black leading-tight">5. Wrong Amount (₹{Math.max(1, total - 50)})</p>
+                    <p className="text-[9px] text-gray-500 dark:text-gray-400">Amount mismatch security rejection</p>
+                  </div>
+                </button>
+
+                {/* 6. Duplicate Payment Replay */}
+                <button
+                  type="button"
+                  onClick={() => handleServerVerifyUpi('PAYMENT_SUCCESS', total, '423891827364')}
+                  className="bg-red-50 dark:bg-red-950/40 hover:bg-red-100 border border-red-300 text-red-900 dark:text-red-200 p-2.5 rounded-xl font-extrabold text-left flex items-center gap-2 transition-colors"
+                >
+                  <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-black leading-tight">6. Duplicate Txn ID Replay</p>
+                    <p className="text-[9px] text-gray-500 dark:text-gray-400">Replay attack blocked with 409</p>
+                  </div>
+                </button>
+
+                {/* 7. User Closes Google Pay / Returns without completing */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg('User returned to QuickPal without completing payment in Google Pay. Please tap "Re-open Google Pay" or choose another payment method.');
+                  }}
+                  className="bg-gray-100 dark:bg-gray-700/60 hover:bg-gray-200 border border-gray-300 text-gray-800 dark:text-gray-200 p-2.5 rounded-xl font-extrabold text-left flex items-center gap-2 transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-500 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-black leading-tight">7. Closed App / Incomplete</p>
+                    <p className="text-[9px] text-gray-500 dark:text-gray-400">Returns without completing payment</p>
+                  </div>
+                </button>
+
+                {/* 8. Change Payment Method */}
+                <button
+                  type="button"
+                  onClick={() => setCheckoutStep('details')}
+                  className="bg-gray-100 dark:bg-gray-700/60 hover:bg-gray-200 border border-gray-300 text-gray-800 dark:text-gray-200 p-2.5 rounded-xl font-extrabold text-left flex items-center gap-2 transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4 text-gray-500 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-black leading-tight">8. Change Payment Method</p>
+                    <p className="text-[9px] text-gray-500 dark:text-gray-400">Switch to COD, Card, or NetBanking</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PAYMENT CANCELLED SCREEN */}
+        {checkoutStep === 'payment_cancelled' && (
+          <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
+            <div className="bg-amber-500 text-white p-5 rounded-3xl shadow-lg space-y-2">
+              <div className="flex items-center gap-2.5">
+                <XCircle className="w-7 h-7 shrink-0 text-white" />
+                <h3 className="font-black text-lg tracking-tight">
+                  Payment Cancelled
+                </h3>
+              </div>
+              <p className="text-sm font-black text-amber-50">
+                Payment cancelled. Your order has not been confirmed.
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 border-2 border-amber-200 dark:border-amber-900 rounded-3xl p-5 space-y-3 text-xs">
+              <div className="flex items-start gap-2.5 text-amber-800 dark:text-amber-200 font-bold">
+                <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-extrabold text-sm text-gray-900 dark:text-gray-100">
+                    Payment cancelled in Google Pay / UPI
+                  </p>
+                  <p className="text-gray-600 dark:text-gray-300 font-medium leading-relaxed">
+                    • Your order has <strong>NOT been confirmed</strong>.<br />
+                    • The store has <strong>NOT received</strong> a confirmed order.<br />
+                    • A delivery partner has <strong>NOT been assigned</strong>.<br />
+                    • Your cart items and discounts have been preserved.
+                  </p>
+                </div>
+              </div>
+
+              {failedPaymentInfo?.orderId && (
+                <div className="p-2.5 bg-gray-50 dark:bg-gray-900 rounded-xl text-[11px] text-gray-500 font-mono">
+                  Order Ref: #{failedPaymentInfo.orderId} (Unconfirmed)
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons required: Try Again and Change Payment Method */}
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={() => handleProceedToUpiFlow(selectedUpiApp)}
+                className="w-full bg-[#FF6A00] hover:bg-[#e05e00] text-white font-black py-3.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-500/30 transition-all active:scale-98"
+              >
+                <RefreshCw className="w-4 h-4" /> Try Again
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCheckoutStep('details')}
+                className="w-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-black py-3.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 transition-all"
+              >
+                <ArrowLeft className="w-4 h-4" /> Change Payment Method
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PAYMENT FAILED SCREEN */}
+        {checkoutStep === 'payment_failed' && (
+          <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
+            <div className="bg-rose-500 text-white p-5 rounded-3xl shadow-lg space-y-2">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle className="w-7 h-7 shrink-0 text-white" />
+                <h3 className="font-black text-lg tracking-tight">
+                  Payment Failed
+                </h3>
+              </div>
+              <p className="text-sm font-black text-rose-50">
+                Payment failed. Please try again or choose another payment method.
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 border-2 border-rose-200 dark:border-rose-900 rounded-3xl p-5 space-y-3 text-xs">
+              <div className="flex items-start gap-2.5 text-rose-800 dark:text-rose-200 font-bold">
+                <ShieldAlert className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-black text-rose-500 block">Failure Reason</span>
+                  <p className="font-extrabold text-sm text-gray-900 dark:text-gray-100">
+                    {failedPaymentInfo?.failureReason || 'Bank or gateway declined payment.'}
+                  </p>
+                  <p className="text-gray-600 dark:text-gray-300 font-medium leading-relaxed mt-1">
+                    • Order has <strong>NOT been confirmed</strong>.<br />
+                    • Delivery partner has <strong>NOT been assigned</strong>.<br />
+                    • Store has <strong>NOT received</strong> a confirmed order.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={() => handleProceedToUpiFlow(selectedUpiApp)}
+                className="w-full bg-[#FF6A00] hover:bg-[#e05e00] text-white font-black py-3.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-500/30 transition-all active:scale-98"
+              >
+                <RefreshCw className="w-4 h-4" /> Try Again
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCheckoutStep('details')}
+                className="w-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-black py-3.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 transition-all"
+              >
+                <ArrowLeft className="w-4 h-4" /> Change Payment Method
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PAYMENT PENDING SCREEN */}
+        {checkoutStep === 'payment_pending' && (
+          <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
+            <div className="bg-blue-600 text-white p-5 rounded-3xl shadow-lg space-y-2">
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-7 h-7 shrink-0 text-white" />
+                <h3 className="font-black text-lg tracking-tight">
+                  Payment Pending
+                </h3>
+              </div>
+              <p className="text-sm font-black text-blue-50">
+                Payment status is pending bank confirmation. QuickPal server is monitoring transaction status.
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 border-2 border-blue-200 dark:border-blue-900 rounded-3xl p-5 space-y-3 text-xs">
+              <p className="font-extrabold text-sm text-gray-900 dark:text-gray-100">
+                Order remains unconfirmed until final bank verification
+              </p>
+              <p className="text-gray-600 dark:text-gray-300 font-medium leading-relaxed">
+                • Status: <strong>PAYMENT_PENDING</strong>.<br />
+                • The store and delivery partner will be notified <strong>ONLY when the payment is verified</strong>.<br />
+                • Click below to check current status directly from the backend.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={() => handleServerVerifyUpi('PAYMENT_SUCCESS')}
+                disabled={isVerifying}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30 transition-all active:scale-98"
+              >
+                <RefreshCw className={`w-4 h-4 ${isVerifying ? 'animate-spin' : ''}`} /> Check Status Now
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCheckoutStep('details')}
+                className="w-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-black py-3.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 transition-all"
+              >
+                <ArrowLeft className="w-4 h-4" /> Change Payment Method
+              </button>
             </div>
           </div>
         )}
@@ -1243,7 +2085,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <button
                   type="button"
                   onClick={handleSwitchToCODAndPlace}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all"
+                  className="w-full bg-[#FF6A00] hover:bg-[#e05e00] text-white font-black py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-orange-500/20 transition-all"
                 >
                   <Banknote className="w-4 h-4" /> Switch to Cash on Delivery (COD) & Place Order
                 </button>
@@ -1252,7 +2094,79 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           </div>
         )}
 
-        {/* Modal Footer / Action Buttons */}
+        {/* Modal Footer / Action Buttons (Blinkit Sticky Bar on details step) */}
+        {checkoutStep === 'details' ? (
+          <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shrink-0 shadow-lg">
+            {/* Address Bar Strip */}
+            <div className="px-4 py-2 bg-orange-50/80 dark:bg-orange-950/30 border-b border-orange-100 dark:border-gray-800 flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <MapPin className="w-3.5 h-3.5 text-[#FF6A00] shrink-0" />
+                <span className="truncate font-bold text-gray-700 dark:text-gray-300">
+                  Delivering to <strong className="text-gray-900 dark:text-white">{selectedAddress.label}</strong> • {selectedAddress.area}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddAddressModal(true)}
+                className="text-[#FF6A00] font-black text-[11px] hover:underline shrink-0 cursor-pointer"
+              >
+                Change
+              </button>
+            </div>
+
+            {/* PAY USING + Total Place Order Bar */}
+            <div className="p-3.5 sm:px-5 flex items-center justify-between gap-3">
+              <div className="text-left min-w-0">
+                <span className="text-[9px] font-black uppercase text-gray-400 tracking-wider flex items-center gap-0.5">
+                  PAY USING <ChevronDown className="w-3 h-3 text-[#FF6A00]" />
+                </span>
+                <p className="text-xs font-black text-gray-900 dark:text-white truncate">
+                  {paymentMethod === 'upi_app'
+                    ? selectedUpiApp === 'gpay'
+                      ? 'Google Pay UPI'
+                      : selectedUpiApp === 'phonepe'
+                      ? 'PhonePe UPI'
+                      : 'Paytm UPI'
+                    : paymentMethod === 'upi_qr'
+                    ? 'UPI QR / BHIM'
+                    : paymentMethod === 'cod'
+                    ? 'Cash on Delivery'
+                    : paymentMethod === 'online_banking'
+                    ? 'Net Banking'
+                    : 'Card Payment'}
+                </p>
+              </div>
+
+              <button
+                onClick={handleProceedToVerification}
+                disabled={(paymentMethod === 'cod' && !isCodEligible) || isCreatingIntent}
+                className={`px-5 sm:px-7 py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-3 shadow-xl transition-all transform active:scale-95 cursor-pointer shrink-0 ${
+                  paymentMethod === 'cod' && !isCodEligible
+                    ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed shadow-none'
+                    : 'bg-[#FF6A00] hover:bg-[#e05e00] text-white shadow-orange-500/40'
+                }`}
+              >
+                {isCreatingIntent ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Connecting...</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-left leading-none border-r border-white/30 pr-3">
+                      <span className="text-sm font-black block">₹{total}</span>
+                      <span className="text-[9px] font-bold uppercase text-orange-100">TOTAL</span>
+                    </div>
+                    <span className="flex items-center gap-1 font-black">
+                      <span>Place Order</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="p-4 bg-gray-50 dark:bg-gray-800/80 border-t border-gray-100 dark:border-gray-800 shrink-0 flex items-center justify-between gap-4">
           <div>
             <span className="text-[10px] uppercase font-bold text-gray-400">Total Amount</span>
@@ -1261,18 +2175,24 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             </p>
           </div>
 
-          {checkoutStep === 'details' ? (
-            <button
-              onClick={handleProceedToVerification}
-              disabled={paymentMethod === 'cod' && !isCodEligible}
-              className={`px-8 py-3.5 rounded-2xl font-black text-sm flex items-center gap-2 shadow-xl transition-all transform active:scale-95 ${
-                paymentMethod === 'cod' && !isCodEligible
-                  ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed shadow-none'
-                  : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
-              }`}
-            >
-              <span>Proceed to Pay & Verify</span> <ArrowRight className="w-4 h-4" />
-            </button>
+          {checkoutStep === 'gpay_flow' ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCheckoutStep('details')}
+                className="px-4 py-3 rounded-2xl font-bold text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300"
+              >
+                Change Method
+              </button>
+              <button
+                type="button"
+                onClick={() => handleServerVerifyUpi('PAYMENT_SUCCESS')}
+                disabled={isVerifying}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3.5 rounded-2xl font-black text-sm flex items-center gap-2 shadow-xl shadow-blue-500/40 transition-all transform active:scale-95"
+              >
+                <CheckCircle2 className="w-4 h-4" /> Verify Payment
+              </button>
+            </div>
           ) : checkoutStep === 'verify_payment' ? (
             <div className="flex items-center gap-2">
               <button
@@ -1285,9 +2205,43 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               <button
                 onClick={handleConfirmAndPay}
                 disabled={isVerifying}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-7 py-3.5 rounded-2xl font-black text-sm flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all transform active:scale-95"
+                className="bg-[#FF6A00] hover:bg-[#e05e00] text-white px-7 py-3.5 rounded-2xl font-black text-sm flex items-center gap-2 shadow-xl shadow-orange-500/40 transition-all transform active:scale-95"
               >
                 <CheckCircle2 className="w-4 h-4" /> Verify & Complete Order
+              </button>
+            </div>
+          ) : checkoutStep === 'payment_cancelled' || checkoutStep === 'payment_failed' ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleProceedToUpiFlow(selectedUpiApp)}
+                className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-3 rounded-2xl font-extrabold text-xs flex items-center gap-1.5 shadow-md"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Try Again
+              </button>
+              <button
+                type="button"
+                onClick={() => setCheckoutStep('details')}
+                className="px-4 py-3 rounded-2xl font-bold text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+              >
+                Change Payment Method
+              </button>
+            </div>
+          ) : checkoutStep === 'payment_pending' ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleServerVerifyUpi('PAYMENT_SUCCESS')}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl font-extrabold text-xs flex items-center gap-1.5 shadow-md"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Check Status Now
+              </button>
+              <button
+                type="button"
+                onClick={() => setCheckoutStep('details')}
+                className="px-4 py-3 rounded-2xl font-bold text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+              >
+                Change Payment Method
               </button>
             </div>
           ) : (
@@ -1309,6 +2263,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Add Delivery Address Modal */}

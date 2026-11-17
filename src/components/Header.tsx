@@ -5,6 +5,7 @@ import { AddressManagementModal } from './AddressManagementModal';
 import { EmailSupportModal } from './EmailSupportModal';
 import { QuickPalEmblem } from './QuickPalLogo';
 import { DEFAULT_WHATSAPP_SUPPORT_URL, DEFAULT_INSTAGRAM_URL } from '../utils/phonePrivacy';
+import { filterAndRankProducts, matchCategoryWithQuery } from '../utils/searchHelper';
 import {
   Search,
   MapPin,
@@ -21,7 +22,6 @@ import {
   Plus,
   ShoppingBasket,
   ArrowRight,
-  Sparkles,
   MessageCircle,
   Instagram,
   Mail
@@ -35,6 +35,7 @@ interface HeaderProps {
   onOpenAuth: () => void;
   onOpenAiAssistant?: () => void;
   onOpenFaqDashboard?: () => void;
+  onNavigateToStore?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -45,6 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
   onOpenAiAssistant,
   onOpenFaqDashboard,
+  onNavigateToStore,
 }) => {
   const {
     cartCount,
@@ -60,11 +62,14 @@ export const Header: React.FC<HeaderProps> = ({
     currentUser,
     isPincodeApproved,
     products,
+    stores,
     categories,
     addToCart,
     selectedCategoryId,
     setSelectedCategoryId,
-    paymentSettings
+    paymentSettings,
+    isDiwaliTheme,
+    toggleDiwaliTheme
   } = useApp();
 
   const whatsappUrl = paymentSettings?.whatsappSupportUrl || DEFAULT_WHATSAPP_SUPPORT_URL;
@@ -82,7 +87,6 @@ export const Header: React.FC<HeaderProps> = ({
   const searchPlaceholders = [
     'Search "milk"',
     'Search "bread"',
-    'Search "modak"',
     'Search "chips"',
     'Search "candies"',
     'Search "curd"',
@@ -115,29 +119,18 @@ export const Header: React.FC<HeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter products for instant dropdown results
+  // Filter products for instant dropdown results using robust token and alias matching (excluding disabled stores)
+  const disabledStoreIds = new Set(stores.filter(s => s.isActive === false).map(s => s.id));
   const matchingProducts = searchQuery.trim()
-    ? products.filter(p => {
-        if (!p || p.isHidden) return false;
-        const q = searchQuery.toLowerCase().trim();
-        const prodName = p.name ? p.name.toLowerCase() : '';
-        const prodDesc = p.description ? p.description.toLowerCase() : '';
-        const prodCat = p.category ? p.category.toLowerCase() : '';
-        const catObj = categories.find(c => c.id === p.category);
-        const catName = catObj ? catObj.name.toLowerCase() : '';
-        const prodWeight = p.weightUnit ? p.weightUnit.toLowerCase() : '';
-        return (
-          prodName.includes(q) ||
-          prodDesc.includes(q) ||
-          prodCat.includes(q) ||
-          catName.includes(q) ||
-          prodWeight.includes(q)
-        );
-      }).slice(0, 6)
+    ? filterAndRankProducts(
+        products.filter(p => !p.isHidden && (!p.storeId || !disabledStoreIds.has(p.storeId))),
+        searchQuery,
+        categories
+      ).slice(0, 8)
     : [];
 
   const matchingCategories = searchQuery.trim()
-    ? categories.filter(c => c && c.name && c.name.toLowerCase().includes(searchQuery.toLowerCase().trim()))
+    ? categories.filter(c => matchCategoryWithQuery(c, searchQuery))
     : [];
 
   const unreadNotifs = notifications.filter(
@@ -146,381 +139,545 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      {/* Subtle Ganapati Chaturthi Festive Top Accent Line */}
-      <div className="w-full h-1 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 shrink-0 shadow-xs" />
+      {/* Top Orange Brand, Location & Account Strip — Scrolls away naturally on scroll down (never frozen) */}
+      <header className="bg-[#FF6A00] text-white px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2.5 sm:gap-4 relative border-b border-orange-600 z-20">
+        {/* Subtle Ambient Glows clipped inside background container */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-0 right-1/4 w-96 h-28 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-1/3 w-80 h-24 bg-orange-700/20 rounded-full blur-2xl pointer-events-none" />
+        </div>
 
-      <header className="bg-gradient-to-r from-amber-900 via-orange-900 to-amber-950 dark:from-amber-950 dark:via-stone-950 dark:to-amber-950 text-white px-4 sm:px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-3 shadow-md shrink-0 border-b border-amber-500/20 transition-colors relative">
-        {/* Subtle Non-Intrusive Floral Garland Motif in Background */}
-        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fbbf24_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none overflow-hidden rounded-none" />
-
-        <div className="flex items-center justify-between w-full md:w-auto gap-3 sm:gap-5 relative z-10">
+        {/* Left Side: Brand Logo + Location & Delivery ETA */}
+        <div className="flex items-center justify-between sm:justify-start flex-1 md:flex-initial gap-2.5 sm:gap-4 relative z-10 min-w-0">
           {/* QuickPal Branding Logo */}
           <div
-            className="flex items-center gap-2.5 cursor-pointer select-none group"
+            className="flex items-center gap-2 cursor-pointer select-none group shrink-0"
             onClick={() => {
               setSearchQuery('');
               setSelectedCategoryId(null);
+              onNavigateToStore?.();
             }}
           >
-            {/* Official QuickPal Orange Badge Emblem */}
-            <div className="w-10 h-10 rounded-2xl bg-[#FF6A00] flex items-center justify-center shadow-md shrink-0 border border-amber-300/40 p-1 group-hover:scale-105 transition-transform">
-              <span className="font-black text-base text-white tracking-tighter leading-none flex items-center select-none">
-                <span className="text-[#1A1A1A]">q</span>
-                <span className="text-white">p</span>
+            {/* Official QuickPal Emblem in White & Orange */}
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-[#FF6A00] flex items-center justify-center shadow-md shrink-0 border border-white p-1 group-hover:scale-105 transition-transform">
+              <span className="font-black text-sm sm:text-base text-[#FF6A00] tracking-tighter leading-none flex items-center select-none">
+                <span>q</span>
+                <span>p</span>
               </span>
             </div>
 
             <div className="flex flex-col">
               <div className="flex items-center gap-1">
-                <span className="text-[9px] font-black uppercase tracking-wider text-amber-200 bg-amber-950/80 px-1.5 py-0.5 rounded border border-amber-500/30 flex items-center gap-1">
-                  <span>🌸</span>
-                  <span>Ganesh Utsav</span>
+                <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-[#FF6A00] bg-white px-1.5 py-0.5 rounded shadow-2xs">
+                  <span>⚡</span>
+                  <span>30-Min Delivery</span>
                 </span>
-                <span className="text-[9px] font-serif text-amber-100/90 hidden lg:inline tracking-tight font-medium">
+                <span className="text-[9px] text-white/90 hidden xl:inline tracking-tight font-medium">
                   • Saphale 401102
                 </span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-baseline leading-none text-white drop-shadow-sm">
-                <span className="text-[#1A1A1A] bg-amber-100/90 px-1.5 py-0.5 rounded-l-lg">quick</span>
-                <span className="text-white bg-[#FF6A00] px-1.5 py-0.5 rounded-r-lg">pal</span>
-                <div className="ml-1.5 w-2 h-2 rounded-full bg-emerald-400 animate-pulse self-center"></div>
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-baseline leading-none text-white drop-shadow-sm mt-0.5">
+                <span className="text-[#FF6A00] bg-white px-1.5 py-0.5 rounded-l-lg">quick</span>
+                <span className="text-white bg-orange-700 px-1.5 py-0.5 rounded-r-lg shadow-sm">pal</span>
+                <div className="ml-1.5 w-2 h-2 rounded-full bg-white animate-pulse self-center"></div>
               </h1>
             </div>
           </div>
 
-          {/* Blinkit Style 2-Tier Location & ETA Selector */}
-          <div ref={addressContainerRef} className="relative z-40">
+          {/* Location & ETA Selector (Blinkit-style with distance & 30-min ETA) */}
+          <div ref={addressContainerRef} className="relative z-40 min-w-0">
             <button
               type="button"
               onClick={() => setShowAddressManagementModal(true)}
-              className="bg-white/10 hover:bg-white/20 dark:bg-black/20 dark:hover:bg-black/40 border border-white/25 rounded-2xl px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-all shadow-xs text-left group"
+              className="bg-white/20 hover:bg-white/30 border border-white/40 rounded-2xl px-2.5 sm:px-3 py-1 sm:py-1.5 flex items-center gap-1.5 cursor-pointer transition-all shadow-xs text-left group max-w-full"
               title="Click to change or edit delivery address"
             >
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping absolute top-2 left-2 opacity-75 pointer-events-none" />
-              <div className="text-left">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] sm:text-xs font-black text-white tracking-tight leading-tight flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
-                    Delivery in 30 minutes
+              <MapPin className="w-4 h-4 text-white shrink-0" />
+              <div className="text-left min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] sm:text-xs font-black text-white tracking-tight leading-tight flex items-center gap-1 whitespace-nowrap">
+                    {isCurrentPincodeValid ? 'Delivery in 30 mins' : 'Area Not Serviceable'}
+                    {selectedAddress.latitude && selectedAddress.longitude && (
+                      <span className="hidden sm:inline bg-white/20 px-1.5 py-0.2 rounded text-[9px] font-extrabold">
+                        {(
+                          Math.round(
+                            Math.hypot(
+                              (selectedAddress.latitude - 19.5785) * 111,
+                              (selectedAddress.longitude - 72.822) * 105
+                            ) * 10
+                          ) / 10 || 1.1
+                        ).toFixed(1)}{' '}
+                        km away
+                      </span>
+                    )}
                   </span>
                 </div>
-                <p className="text-[10px] text-amber-200/95 font-extrabold truncate max-w-[140px] sm:max-w-[180px] flex items-center gap-0.5 leading-tight mt-0.5 group-hover:text-white transition-colors">
-                  <span className="truncate">{selectedAddress.pincode}, {selectedAddress.area}</span>
-                  <ChevronDown className="w-3 h-3 text-amber-200 group-hover:text-white shrink-0" />
+                <p className="text-[9px] sm:text-[10px] text-orange-100 font-extrabold truncate max-w-[120px] sm:max-w-[200px] flex items-center gap-0.5 leading-tight mt-0.5 group-hover:text-white transition-colors">
+                  <span className="truncate">{selectedAddress.label} - {selectedAddress.area}, {selectedAddress.pincode}</span>
+                  <ChevronDown className="w-3 h-3 text-white group-hover:text-white shrink-0" />
                 </p>
               </div>
             </button>
           </div>
         </div>
 
-      <AddressManagementModal
-        isOpen={showAddressManagementModal}
-        onClose={() => setShowAddressManagementModal(false)}
-      />
+        {/* Right Essential Actions: Login & Iconic Cart Button */}
+        <div className="flex items-center justify-end gap-2 sm:gap-3 shrink-0 relative z-10">
+          {/* User Login & Profile Button */}
+          <button
+            onClick={onOpenAuth}
+            className="bg-white/15 hover:bg-white/25 text-white px-2.5 sm:px-3.5 py-2 rounded-2xl text-xs font-black flex items-center gap-2 backdrop-blur-sm border border-white/30 transition-all shadow-xs shrink-0 cursor-pointer"
+          >
+            <div className="w-6 h-6 rounded-xl bg-white text-[#FF6A00] flex items-center justify-center font-black text-xs shrink-0 shadow-sm">
+              {currentUser ? currentUser.name.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5 text-[#FF6A00]" />}
+            </div>
+            <span className="hidden sm:inline font-bold">
+              {currentUser ? currentUser.name.split(' ')[0] : 'Login'}
+            </span>
+          </button>
 
-      <AddAddressModal
-        isOpen={showAddAddressModal}
-        onClose={() => setShowAddAddressModal(false)}
-      />
-
-      {/* Global Search Bar with Live Instant Autocomplete Dropdown */}
-      <div ref={searchContainerRef} className="w-full md:flex-1 max-w-xl mx-0 md:mx-4 relative z-30">
-        <div className="relative">
-          <input
-            type="text"
-            value={searchQuery}
-            onFocus={() => setIsSearchFocused(true)}
-            onChange={e => {
-              setSearchQuery(e.target.value);
-              setIsSearchFocused(true);
-              // Clear category filter so search queries search across ALL products in store!
-              if (selectedCategoryId) {
-                setSelectedCategoryId(null);
-              }
-            }}
-            placeholder={searchPlaceholders[placeholderIndex]}
-            className="w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-2xl py-3 pl-11 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 shadow-xs border border-orange-300/40 placeholder-gray-400 font-medium transition-all"
-          />
-          <Search className="w-5 h-5 text-gray-400 absolute left-3.5 top-3.5" />
-          {searchQuery && (
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setIsSearchFocused(false);
-              }}
-              className="absolute right-3.5 top-3 p-1 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
+          {/* QuickPal Crisp White & Orange My Cart Button */}
+          <button
+            onClick={onOpenCart}
+            className="bg-white hover:bg-orange-50 text-[#FF6A00] px-3 sm:px-5 py-2 sm:py-2.5 rounded-2xl font-black flex items-center gap-2 shadow-lg border-2 border-white transition-all transform active:scale-95 shrink-0 group cursor-pointer"
+            title="Open Shopping Cart"
+          >
+            <div className="relative flex items-center justify-center">
+              <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF6A00] group-hover:scale-110 transition-transform" />
+              {cartCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-[#FF6A00] text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white font-black animate-pulse shadow-sm">
+                  {cartCount}
+                </span>
+              )}
+            </div>
+            <div className="hidden sm:flex flex-col text-left leading-none">
+              {cartCount > 0 ? (
+                <>
+                  <span className="text-[9px] sm:text-[10px] uppercase font-black text-orange-600 tracking-tight">
+                    {cartCount} {cartCount === 1 ? 'item' : 'items'}
+                  </span>
+                  <span className="text-xs sm:text-sm font-black text-[#FF6A00] mt-0.5">
+                    ₹{cartSubtotal}
+                  </span>
+                </>
+              ) : (
+                <span className="text-xs sm:text-sm font-black text-[#FF6A00]">
+                  My Cart
+                </span>
+              )}
+            </div>
+          </button>
         </div>
 
-        {/* Live Search Results Dropdown */}
-        {isSearchFocused && searchQuery.trim() !== '' && (
-          <div className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden z-50 max-h-[75vh] flex flex-col animate-in fade-in duration-150">
-            <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs">
-              <span className="font-extrabold text-gray-500 uppercase tracking-wider">
-                Instant Search Results
-              </span>
-              <span className="bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 text-[10px] font-black px-2 py-0.5 rounded-full">
-                {matchingProducts.length} items
-              </span>
-            </div>
+        <AddressManagementModal
+          isOpen={showAddressManagementModal}
+          onClose={() => setShowAddressManagementModal(false)}
+        />
 
-            <div className="overflow-y-auto p-2 space-y-2">
-              {/* Matching Categories Quick Filters */}
-              {matchingCategories.length > 0 && (
-                <div className="p-2 bg-orange-50/60 dark:bg-orange-950/20 rounded-xl space-y-1.5 border border-orange-100 dark:border-orange-900/40">
-                  <span className="text-[10px] font-black uppercase text-orange-800 dark:text-orange-300 block">
-                    Matching Categories
+        <AddAddressModal
+          isOpen={showAddAddressModal}
+          onClose={() => setShowAddAddressModal(false)}
+        />
+      </header>
+
+      {/* Sticky Top Search Bar Wrapper: Pins cleanly at top-0 on white background once scrolled past orange bar */}
+      <div className="sticky top-0 z-30 bg-white dark:bg-stone-900 px-3 sm:px-6 py-2.5 border-b border-orange-100 dark:border-orange-950 shadow-sm shrink-0">
+        <div ref={searchContainerRef} className="w-full max-w-7xl mx-auto relative">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setIsSearchFocused(false);
+              onNavigateToStore?.();
+            }}
+            className="relative flex items-center w-full"
+          >
+            <input
+              type="text"
+              value={searchQuery}
+              onFocus={() => {
+                setIsSearchFocused(true);
+                onNavigateToStore?.();
+              }}
+              onChange={e => {
+                setSearchQuery(e.target.value);
+                setIsSearchFocused(true);
+                if (selectedCategoryId) {
+                  setSelectedCategoryId(null);
+                }
+                onNavigateToStore?.();
+              }}
+              placeholder={searchPlaceholders[placeholderIndex]}
+              className="w-full bg-gray-50 focus:bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-2xl py-2.5 sm:py-3 pl-11 sm:pl-12 pr-24 sm:pr-32 text-sm sm:text-base focus:outline-none border-2 border-orange-200 dark:border-orange-900 focus:border-[#FF6A00] focus:ring-4 focus:ring-orange-500/15 shadow-xs placeholder-gray-400 font-bold transition-all"
+            />
+            <Search className="w-5 h-5 text-[#FF6A00] absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+            {searchQuery ? (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setIsSearchFocused(false);
+                    onNavigateToStore?.();
+                  }}
+                  className="p-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors cursor-pointer"
+                  title="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <button
+                  type="submit"
+                  onClick={() => {
+                    setIsSearchFocused(false);
+                    onNavigateToStore?.();
+                  }}
+                  className="bg-[#FF6A00] hover:bg-orange-600 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs transition-transform active:scale-95 cursor-pointer flex items-center gap-1"
+                >
+                  <span>Search</span>
+                  <ArrowRight className="w-3.5 h-3.5 hidden sm:inline" />
+                </button>
+              </div>
+            ) : (
+              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1 text-[11px] font-bold text-gray-400 pointer-events-none">
+                <span className="bg-orange-50 text-[#FF6A00] px-2 py-0.5 rounded-md text-[10px] font-black border border-orange-200">
+                  Instant Search
+                </span>
+              </div>
+            )}
+          </form>
+
+          {/* Live Search Results Dropdown - Full Visibility Floating Above Store */}
+          {isSearchFocused && searchQuery.trim() !== '' && (
+            <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-2xl border-2 border-orange-300 overflow-hidden z-50 max-h-[75vh] flex flex-col animate-in fade-in duration-150 text-gray-900">
+              {/* Visible Search Query Header */}
+              <div className="p-3 sm:p-3.5 bg-orange-50 border-b border-orange-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-gray-600 uppercase tracking-wider text-[11px]">
+                    Searching For:
                   </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {matchingCategories.map(cat => (
-                      <button
-                        key={cat.id}
-                        onClick={() => {
-                          setSelectedCategoryId(cat.id);
-                          setSearchQuery('');
-                          setIsSearchFocused(false);
-                        }}
-                        className="px-2.5 py-1 bg-white dark:bg-gray-800 hover:bg-orange-500 hover:text-white text-gray-800 dark:text-gray-200 rounded-lg text-xs font-bold border border-orange-200 dark:border-orange-800 flex items-center gap-1 transition-colors shadow-xs"
-                      >
-                        <span>{cat.iconEmoji}</span>
-                        <span>{cat.name}</span>
-                      </button>
-                    ))}
-                  </div>
+                  <span className="bg-[#FF6A00] text-white text-xs sm:text-sm font-black px-2.5 py-1 rounded-lg shadow-xs flex items-center gap-1">
+                    <span>&ldquo;{searchQuery}&rdquo;</span>
+                  </span>
                 </div>
-              )}
+                <span className="bg-white text-orange-800 text-xs font-black px-2.5 py-1 rounded-lg border border-orange-200 shadow-2xs">
+                  {matchingProducts.length} {matchingProducts.length === 1 ? 'item found' : 'items found'}
+                </span>
+              </div>
 
-              {/* Product Matches */}
-              {matchingProducts.length === 0 ? (
-                <div className="p-6 text-center text-gray-500 dark:text-gray-400 space-y-2">
-                  <p className="text-sm font-bold">No products found matching "{searchQuery}"</p>
-                  <p className="text-xs text-gray-400">Try searching for milk, bread, chips, curd, soda or apples!</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {matchingProducts.map(prod => (
-                    <div
-                      key={prod.id}
-                      className="p-2 flex items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/70 rounded-xl transition-colors group cursor-pointer"
-                      onClick={() => {
-                        setIsSearchFocused(false);
-                      }}
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden shrink-0 flex items-center justify-center p-1">
-                          {prod.image ? (
-                            <img
-                              src={prod.image}
-                              alt={prod.name}
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-contain"
-                            />
-                          ) : (
-                            <span className="text-2xl">{prod.imageEmoji}</span>
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate group-hover:text-orange-600 dark:group-hover:text-orange-400">
-                            {prod.name}
-                          </h4>
-                          <div className="flex items-center gap-2 mt-0.5 text-[11px]">
-                            <span className="font-black text-gray-900 dark:text-gray-100">
-                              ₹{prod.price}
-                            </span>
-                            {prod.originalPrice > prod.price && (
-                              <span className="line-through text-gray-400 text-[10px]">
-                                ₹{prod.originalPrice}
-                              </span>
+              <div className="overflow-y-auto p-2 space-y-2">
+                {/* Matching Categories Quick Filters */}
+                {matchingCategories.length > 0 && (
+                  <div className="p-2.5 bg-orange-50/70 rounded-xl space-y-1.5 border border-orange-200/80">
+                    <span className="text-[10px] font-black uppercase text-orange-800 tracking-wider block">
+                      Matching Categories
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {matchingCategories.map(cat => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCategoryId(cat.id);
+                            setSearchQuery('');
+                            setIsSearchFocused(false);
+                            onNavigateToStore?.();
+                          }}
+                          className="px-2.5 py-1 bg-white hover:bg-[#FF6A00] hover:text-white text-gray-800 rounded-lg text-xs font-bold border border-orange-200 flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
+                        >
+                          <span>{cat.iconEmoji}</span>
+                          <span>{cat.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Product Matches */}
+                {matchingProducts.length === 0 ? (
+                  <div className="p-6 text-center text-gray-600 space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-200 text-[#FF6A00] flex items-center justify-center text-2xl mx-auto shadow-2xs">
+                      🔍
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-gray-900">No direct products found matching &ldquo;{searchQuery}&rdquo;</p>
+                      <p className="text-xs text-gray-500 font-medium mt-1">Try one of our popular Saphale groceries:</p>
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-1.5 pt-1">
+                      {['Milk', 'Bread', 'Eggs', 'Chips', 'Butter', 'Apples', 'Curd', 'Cold Drinks'].map(term => (
+                        <button
+                          key={term}
+                          type="button"
+                          onClick={() => {
+                            setSearchQuery(term);
+                            onNavigateToStore?.();
+                          }}
+                          className="bg-orange-50 hover:bg-[#FF6A00] hover:text-white text-[#FF6A00] border border-orange-200 text-xs font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                        >
+                          {term}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {matchingProducts.map(prod => (
+                      <div
+                        key={prod.id}
+                        className="p-2.5 flex items-center justify-between gap-3 hover:bg-orange-50/70 rounded-xl transition-colors group cursor-pointer"
+                        onClick={() => {
+                          setSearchQuery(prod.name);
+                          setIsSearchFocused(false);
+                          onNavigateToStore?.();
+                        }}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-12 h-12 rounded-xl bg-orange-50/60 border border-orange-200 overflow-hidden shrink-0 flex items-center justify-center p-1">
+                            {prod.image ? (
+                              <img
+                                src={prod.image}
+                                alt={prod.name}
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-contain"
+                              />
+                            ) : (
+                              <span className="text-2xl">{prod.imageEmoji}</span>
                             )}
-                            {prod.weightUnit && (
-                              <span className="text-gray-400 text-[10px]">
-                                ({prod.weightUnit})
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-xs font-bold text-gray-900 truncate group-hover:text-[#FF6A00] transition-colors">
+                              {prod.name}
+                            </h4>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px]">
+                              <span className="font-black text-[#FF6A00]">
+                                ₹{prod.price}
                               </span>
+                              {prod.originalPrice > prod.price && (
+                                <span className="line-through text-gray-400 text-[10px]">
+                                  ₹{prod.originalPrice}
+                                </span>
+                              )}
+                              {prod.weightUnit && (
+                                <span className="text-gray-500 text-[10px] font-medium">
+                                  • {prod.weightUnit}
+                                </span>
+                              )}
+                            </div>
+                            {prod.storeName && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <span className="text-[9px] font-bold bg-orange-50 text-[#FF6A00] border border-orange-200 px-1.5 py-0.2 rounded">
+                                  🏪 {prod.storeName}
+                                </span>
+                              </div>
                             )}
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToCart(prod, 1);
+                          }}
+                          className="bg-[#FF6A00] hover:bg-orange-600 text-white font-black text-xs px-3.5 py-1.5 rounded-xl shadow-xs shrink-0 flex items-center gap-1 transition-transform active:scale-95 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add
+                        </button>
                       </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          addToCart(prod, 1);
-                        }}
-                        className="bg-orange-500 hover:bg-orange-600 text-white font-black text-xs px-3 py-1.5 rounded-xl shadow-sm shrink-0 flex items-center gap-1 transition-transform active:scale-95"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Add
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="p-3 bg-gray-50 border-t border-orange-200 flex justify-between items-center text-xs">
+                <span className="text-gray-600 font-bold text-[11px]">
+                  Showing top instant matches • Press Enter to view in catalog
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSearchFocused(false);
+                    onNavigateToStore?.();
+                  }}
+                  className="bg-[#FF6A00] hover:bg-orange-600 text-white font-black px-3 py-1.5 rounded-xl shadow-xs transition-colors flex items-center gap-1"
+                >
+                  <span>View All In Store</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
             </div>
-
-            <div className="p-2.5 bg-gray-100 dark:bg-gray-800/80 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center text-xs">
-              <span className="text-gray-500 font-semibold text-[11px]">
-                Showing search results in main catalog
-              </span>
-              <button
-                onClick={() => setIsSearchFocused(false)}
-                className="text-orange-600 dark:text-orange-400 font-extrabold hover:underline"
-              >
-                Close Search
-              </button>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Header Actions */}
-      <div className="flex items-center justify-end gap-2.5 sm:gap-3.5 w-full md:w-auto">
-        {/* FAQ Dashboard Button */}
-        {onOpenFaqDashboard && (
+      {/* Down-Shifted Secondary Action Bar: Utility Buttons & Quick Category Shortcuts */}
+      <div className="w-full bg-white dark:bg-stone-900 border-b border-orange-200 dark:border-orange-950 px-3 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs font-bold transition-colors shadow-2xs z-10 shrink-0">
+        {/* Left Side: Store & Category Quick Navigation */}
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar shrink-0">
           <button
-            onClick={onOpenFaqDashboard}
-            className="p-2 text-white hover:bg-orange-500 dark:hover:bg-orange-800 rounded-xl transition-colors flex items-center gap-1"
-            title="FAQ Dashboard & Help"
+            onClick={() => {
+              setSelectedCategoryId(null);
+              onNavigateToStore?.();
+            }}
+            className={`px-3 py-1.5 rounded-xl transition-all shrink-0 font-bold flex items-center gap-1.5 cursor-pointer ${
+              !selectedCategoryId
+                ? 'bg-[#FF6A00] text-white font-black shadow-xs'
+                : 'text-stone-700 dark:text-stone-300 hover:text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-950/40 border border-transparent'
+            }`}
           >
-            <HelpCircle className="w-5 h-5 text-yellow-300" />
-            <span className="text-xs font-bold hidden xl:inline">FAQs</span>
+            <span>🏪</span>
+            <span>All Groceries</span>
           </button>
-        )}
 
-        {/* AI Support Assistant Button */}
-        {onOpenAiAssistant && (
           <button
-            onClick={onOpenAiAssistant}
-            className="bg-yellow-300 hover:bg-yellow-400 text-orange-950 font-black px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md border border-yellow-200 transition-all active:scale-95 shrink-0"
-            title="Ask AI Assistant 24/7"
+            onClick={() => {
+              setSelectedCategoryId('cat-dairy');
+              onNavigateToStore?.();
+            }}
+            className={`px-3 py-1.5 rounded-xl transition-all shrink-0 text-xs font-bold flex items-center gap-1 cursor-pointer border ${
+              selectedCategoryId === 'cat-dairy'
+                ? 'bg-[#FF6A00] text-white border-[#FF6A00] font-black'
+                : 'bg-orange-50/70 hover:bg-orange-100 dark:bg-orange-950/30 text-stone-700 dark:text-stone-300 border-orange-200/80 hover:text-[#FF6A00]'
+            }`}
           >
-            <Bot className="w-4 h-4 text-orange-950" />
-            <span className="hidden sm:inline">AI Help</span>
+            <span>🥛</span>
+            <span>Dairy & Bread</span>
           </button>
-        )}
 
-        {/* Wishlist */}
-        <button
-          onClick={onOpenWishlist}
-          className="p-2 text-white hover:bg-orange-500 dark:hover:bg-orange-800 rounded-xl transition-colors relative"
-          title="Wishlist"
-        >
-          <Heart className="w-5 h-5" />
-          {wishlistProductIds.length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-yellow-300 text-orange-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-orange-600">
-              {wishlistProductIds.length}
-            </span>
+          <button
+            onClick={() => {
+              setSelectedCategoryId('cat-veg');
+              onNavigateToStore?.();
+            }}
+            className={`px-3 py-1.5 rounded-xl transition-all shrink-0 text-xs font-bold items-center gap-1 cursor-pointer border hidden md:flex ${
+              selectedCategoryId === 'cat-veg'
+                ? 'bg-[#FF6A00] text-white border-[#FF6A00] font-black'
+                : 'bg-orange-50/70 hover:bg-orange-100 dark:bg-orange-950/30 text-stone-700 dark:text-stone-300 border-orange-200/80 hover:text-[#FF6A00]'
+            }`}
+          >
+            <span>🥬</span>
+            <span>Veggies & Fruits</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setSelectedCategoryId('cat-snacks');
+              onNavigateToStore?.();
+            }}
+            className={`px-3 py-1.5 rounded-xl transition-all shrink-0 text-xs font-bold items-center gap-1 cursor-pointer border hidden lg:flex ${
+              selectedCategoryId === 'cat-snacks'
+                ? 'bg-[#FF6A00] text-white border-[#FF6A00] font-black'
+                : 'bg-orange-50/70 hover:bg-orange-100 dark:bg-orange-950/30 text-stone-700 dark:text-stone-300 border-orange-200/80 hover:text-[#FF6A00]'
+            }`}
+          >
+            <span>🥨</span>
+            <span>Snacks & Munchies</span>
+          </button>
+        </div>
+
+        {/* Right Side: Shifted Other App Buttons (AI Help, Wishlist, Notifications, Orders, WhatsApp, Instagram, Email, FAQs) */}
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar shrink-0 justify-end">
+          {/* AI Support Assistant Button */}
+          {onOpenAiAssistant && (
+            <button
+              onClick={onOpenAiAssistant}
+              className="bg-gradient-to-r from-orange-500 to-[#FF6A00] hover:from-orange-600 hover:to-orange-500 text-white font-black px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 shrink-0 cursor-pointer"
+              title="Ask AI Assistant 24/7"
+            >
+              <Bot className="w-3.5 h-3.5 text-white" />
+              <span>AI Help</span>
+            </button>
           )}
-        </button>
 
-        {/* WhatsApp Support Button */}
-        <a
-          href={whatsappUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="p-2 text-white bg-emerald-500/30 hover:bg-emerald-500/50 rounded-xl transition-all border border-emerald-400/40 flex items-center gap-1.5 shadow-2xs hover:scale-105"
-          title="WhatsApp Support & Community"
-          aria-label="WhatsApp Support"
-        >
-          <MessageCircle className="w-4 h-4 text-emerald-300" />
-          <span className="text-[11px] font-black text-emerald-200 hidden xl:inline">WhatsApp</span>
-        </a>
 
-        {/* Instagram Profile */}
-        <a
-          href={instagramUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="p-2 text-white bg-pink-500/20 hover:bg-pink-500/40 rounded-xl transition-all border border-pink-400/30 flex items-center gap-1.5 shadow-2xs hover:scale-105"
-          title="Follow QuickPal on Instagram (@quickpal.in)"
-          aria-label="Instagram Handle"
-        >
-          <Instagram className="w-4 h-4 text-pink-300" />
-          <span className="text-[11px] font-black text-pink-200 hidden 2xl:inline">@quickpal.in</span>
-        </a>
-
-        {/* Email Support Button */}
-        <button
-          onClick={() => setShowEmailModal(true)}
-          className="p-2 text-white bg-orange-500/30 hover:bg-orange-500/50 rounded-xl transition-all border border-orange-400/40 flex items-center gap-1.5 shadow-2xs hover:scale-105"
-          title="Contact Email Support (quickpal.in@outlook.com)"
-          aria-label="Email Support"
-        >
-          <Mail className="w-4 h-4 text-yellow-200" />
-          <span className="text-[11px] font-black text-yellow-100 hidden 2xl:inline">Email</span>
-        </button>
-
-        {/* Notifications */}
-        <button
-          onClick={onOpenNotifications}
-          className="p-2 text-white hover:bg-orange-500 dark:hover:bg-orange-800 rounded-xl transition-colors relative"
-          title="Notifications"
-        >
-          <Bell className="w-5 h-5" />
-          {unreadNotifs > 0 && (
-            <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-orange-600 animate-pulse">
-              {unreadNotifs}
-            </span>
-          )}
-        </button>
-
-        {/* Orders History */}
-        <button
-          onClick={onOpenOrders}
-          className="p-2 text-white hover:bg-orange-500 dark:hover:bg-orange-800 rounded-xl transition-colors hidden sm:flex items-center gap-1.5"
-          title="My Orders"
-        >
-          <User className="w-5 h-5" />
-          <span className="text-xs font-bold hidden lg:inline">Orders</span>
-        </button>
-
-        {/* User Login & Profile Button */}
-        <button
-          onClick={onOpenAuth}
-          className="bg-white/10 hover:bg-white/20 text-white px-3 sm:px-3.5 py-2 rounded-2xl text-xs font-black flex items-center gap-2 backdrop-blur-sm border border-white/20 transition-all shadow-xs"
-        >
-          <div className="w-6 h-6 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
-            {currentUser ? currentUser.name.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
-          </div>
-          <span className="hidden sm:inline font-bold">
-            {currentUser ? currentUser.name.split(' ')[0] : 'Login'}
-          </span>
-        </button>
-
-        {/* Blinkit Iconic My Cart Button */}
-        <button
-          onClick={onOpenCart}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 sm:px-4 py-2 rounded-2xl font-black flex items-center gap-2.5 shadow-md border border-emerald-400/40 transition-all transform active:scale-95 shrink-0 group"
-          title="Open Shopping Cart"
-        >
-          <div className="relative flex items-center justify-center">
-            <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-white group-hover:scale-110 transition-transform" />
-            {cartCount > 0 && (
-              <span className="absolute -top-2 -right-2 bg-amber-300 text-amber-950 text-[10px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-emerald-700 font-black animate-pulse">
-                {cartCount}
+          {/* Wishlist */}
+          <button
+            onClick={onOpenWishlist}
+            className="p-1.5 sm:px-2 sm:py-1.5 text-stone-700 dark:text-stone-300 hover:bg-orange-50 dark:hover:bg-orange-950/40 rounded-xl transition-colors relative flex items-center gap-1 cursor-pointer"
+            title="Wishlist"
+          >
+            <Heart className="w-4 h-4 text-rose-500" />
+            <span className="text-xs font-bold hidden sm:inline">Wishlist</span>
+            {wishlistProductIds.length > 0 && (
+              <span className="bg-[#FF6A00] text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                {wishlistProductIds.length}
               </span>
             )}
-          </div>
-          <div className="flex flex-col text-left leading-none">
-            {cartCount > 0 ? (
-              <>
-                <span className="text-[10px] uppercase font-black text-emerald-100 tracking-tight">
-                  {cartCount} {cartCount === 1 ? 'item' : 'items'}
-                </span>
-                <span className="text-xs sm:text-sm font-black text-white mt-0.5">
-                  ₹{cartSubtotal}
-                </span>
-              </>
-            ) : (
-              <span className="text-xs sm:text-sm font-black text-white">
-                My Cart
+          </button>
+
+          {/* Notifications */}
+          <button
+            onClick={onOpenNotifications}
+            className="p-1.5 sm:px-2 sm:py-1.5 text-stone-700 dark:text-stone-300 hover:bg-orange-50 dark:hover:bg-orange-950/40 rounded-xl transition-colors relative flex items-center gap-1 cursor-pointer"
+            title="Notifications"
+          >
+            <Bell className="w-4 h-4 text-[#FF6A00]" />
+            <span className="text-xs font-bold hidden md:inline">Alerts</span>
+            {unreadNotifs > 0 && (
+              <span className="bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full animate-pulse">
+                {unreadNotifs}
               </span>
             )}
-          </div>
-        </button>
+          </button>
+
+          {/* Orders Button */}
+          <button
+            onClick={onOpenOrders}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 text-stone-700 dark:text-stone-300 hover:bg-orange-50 dark:hover:bg-orange-950/40 rounded-xl transition-all flex items-center gap-1 shadow-2xs border border-orange-100 dark:border-orange-950 cursor-pointer"
+            title="My Orders"
+          >
+            <User className="w-4 h-4 text-[#FF6A00]" />
+            <span className="text-xs font-bold">Orders</span>
+          </button>
+
+          {/* WhatsApp Support Button */}
+          <a
+            href={whatsappUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 sm:px-2 sm:py-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 rounded-xl transition-all border border-emerald-200 dark:border-emerald-800 flex items-center gap-1 shadow-2xs hover:scale-105"
+            title="WhatsApp Support & Community"
+            aria-label="WhatsApp Support"
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="text-[11px] font-black hidden xl:inline">WhatsApp</span>
+          </a>
+
+          {/* Instagram Handle */}
+          <a
+            href={instagramUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 sm:px-2 sm:py-1.5 text-pink-700 bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/30 rounded-xl transition-all border border-pink-200 dark:border-pink-800 flex items-center gap-1 shadow-2xs hover:scale-105 hidden 2xl:flex"
+            title="Follow QuickPal on Instagram (@quickpal.in)"
+            aria-label="Instagram Handle"
+          >
+            <Instagram className="w-3.5 h-3.5 text-pink-600" />
+            <span className="text-[11px] font-black">@quickpal.in</span>
+          </a>
+
+          {/* Email Support Button */}
+          <button
+            onClick={() => setShowEmailModal(true)}
+            className="p-1.5 sm:px-2 sm:py-1.5 text-stone-700 dark:text-stone-300 bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/40 rounded-xl transition-all border border-orange-200 dark:border-orange-900 flex items-center gap-1 shadow-2xs hover:scale-105 cursor-pointer hidden xl:flex"
+            title="Contact Email Support (quickpal.in@outlook.com)"
+            aria-label="Email Support"
+          >
+            <Mail className="w-3.5 h-3.5 text-[#FF6A00]" />
+            <span className="text-[11px] font-black">Email</span>
+          </button>
+
+          {/* FAQ Dashboard Button */}
+          {onOpenFaqDashboard && (
+            <button
+              onClick={onOpenFaqDashboard}
+              className="p-1.5 sm:px-2.5 sm:py-1.5 text-stone-700 dark:text-stone-300 hover:bg-orange-50 dark:hover:bg-orange-950/40 rounded-xl transition-colors flex items-center gap-1 cursor-pointer border border-transparent hover:border-orange-200"
+              title="FAQ Dashboard & Help"
+            >
+              <HelpCircle className="w-4 h-4 text-amber-500" />
+              <span className="text-xs font-bold hidden lg:inline">Help</span>
+            </button>
+          )}
+        </div>
       </div>
-    </header>
 
     {/* Email Support Modal */}
     <EmailSupportModal

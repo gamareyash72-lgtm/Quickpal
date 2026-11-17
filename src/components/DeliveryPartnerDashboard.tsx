@@ -179,7 +179,9 @@ export const DeliveryPartnerDashboard: React.FC = () => {
   // Pending orders requiring partner acceptance in active service area pincode (default 401102)
   const pendingOrders = (orders || []).filter(o => {
     const s = (o?.status || 'placed').toLowerCase().trim();
-    const isEligibleStatus = !s || s === 'pending' || s === 'placed' || s === 'store_accepted' || s === 'ready_for_delivery' || s === 'processing';
+    // Delivery partner assignment happens ONLY after verified payment success (or COD)
+    const isPaymentConfirmed = o?.paymentMethod === 'cod' || o?.paymentStatus === 'paid';
+    const isEligibleStatus = (!s || s === 'pending' || s === 'placed' || s === 'store_accepted' || s === 'ready_for_delivery' || s === 'processing') && isPaymentConfirmed;
     const isUnassigned = !o?.deliveryPartnerId && !o?.assignedPartnerId;
     const notResponded = !(o?.partnerResponseLogs || []).some(l => l?.partnerId === partnerUid);
     const pin = (o?.deliveryPincode || (typeof o?.address === 'object' ? (o.address as any)?.pincode : '') || (typeof o?.deliveryAddress === 'string' && o.deliveryAddress.includes('401102') ? '401102' : '') || '401102').trim();

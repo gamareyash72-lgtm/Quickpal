@@ -10,10 +10,10 @@ import {
   Heart,
   ShieldCheck,
   Truck,
-  Sparkles,
   ChevronLeft,
   ChevronRight,
-  ZoomIn
+  ZoomIn,
+  Store
 } from 'lucide-react';
 
 interface ProductDetailModalProps {
@@ -25,7 +25,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   product,
   onClose,
 }) => {
-  const { cartItems, addToCart, updateQuantity, wishlistProductIds, toggleWishlist, categories } = useApp();
+  const { cartItems, addToCart, updateQuantity, wishlistProductIds, toggleWishlist, categories, stores } = useApp();
 
   if (!product) return null;
 
@@ -209,6 +209,28 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed font-medium">
                 {product.description}
               </p>
+            </div>
+
+            {/* Sold By Partner Store Badge (Orange & White Theme) */}
+            <div className="bg-orange-50/70 dark:bg-orange-950/30 p-3 rounded-2xl border border-orange-200 dark:border-orange-800/50 flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-[#FF6A00] text-white flex items-center justify-center shrink-0">
+                  <Store className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-black uppercase text-orange-600 block">
+                    Partner Store
+                  </span>
+                  <p className="font-black text-gray-900 dark:text-gray-100 truncate">
+                    {product.storeName ||
+                      stores.find(s => s.id === product.storeId)?.name ||
+                      'QuickPal Saphale Central Store'}
+                  </p>
+                </div>
+              </div>
+              <span className="bg-white dark:bg-gray-800 text-[#FF6A00] border border-orange-200 dark:border-orange-800 text-[10px] font-black px-2 py-1 rounded-lg shrink-0">
+                ✓ Verified
+              </span>
             </div>
 
             {/* Quality & Express Guarantees */}

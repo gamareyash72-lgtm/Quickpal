@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { X, Clock, RefreshCw, AlertTriangle, ShieldCheck, CheckCircle2, KeyRound, Upload, Image as ImageIcon, Printer } from 'lucide-react';
 import { printOrderReceipt } from '../utils/printReceipt';
+import { OrderRatingFeedback } from './OrderRatingFeedback';
 
 interface OrderHistoryModalProps {
   isOpen: boolean;
@@ -14,12 +15,13 @@ export const OrderHistoryModal: React.FC<OrderHistoryModalProps> = ({
   onClose,
   onTrackOrder,
 }) => {
-  const { orders, addToCart, reverifyOrderPayment } = useApp();
+  const { orders, addToCart, reverifyOrderPayment, submitOrderFeedback } = useApp();
   const [resubmitOrderId, setResubmitOrderId] = useState<string | null>(null);
   const [newUtr, setNewUtr] = useState('');
   const [newAmount, setNewAmount] = useState<number | null>(null);
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
   const [resubmitMsg, setResubmitMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [reorderedOrderId, setReorderedOrderId] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -208,7 +210,13 @@ export const OrderHistoryModal: React.FC<OrderHistoryModalProps> = ({
                   ))}
                 </div>
 
-                <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                {/* Order Rating & Feedback Component (Visible when delivery is completed) */}
+                <OrderRatingFeedback
+                  order={ord}
+                  onSubmitFeedback={submitOrderFeedback}
+                />
+
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <span className="font-black text-sm text-gray-900 dark:text-gray-100 block">
                       Total: ₹{ord.total} ({ord.paymentMethod.toUpperCase()})
@@ -228,26 +236,34 @@ export const OrderHistoryModal: React.FC<OrderHistoryModalProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 justify-end">
+                  <div className="flex flex-wrap gap-1.5 justify-end items-center">
                     {/* Print Receipt Button */}
                     <button
                       onClick={() => printOrderReceipt(ord)}
-                      className="px-2.5 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-100 dark:hover:bg-gray-800 text-xs flex items-center gap-1 transition-all"
+                      className="px-2.5 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-100 dark:hover:bg-gray-800 text-xs flex items-center gap-1 transition-all cursor-pointer"
                       title="Print Receipt"
                     >
                       <Printer className="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" /> Print Receipt
                     </button>
 
                     {/* Re-order items button */}
-                    <button
-                      onClick={() => {
-                        ord.items.forEach(i => addToCart(i.product, i.quantity));
-                        alert('Items re-added to your cart!');
-                      }}
-                      className="px-2.5 py-1.5 rounded-xl border border-orange-500 text-orange-700 dark:text-orange-300 font-bold hover:bg-orange-50 dark:hover:bg-orange-950/40 text-xs flex items-center gap-1"
-                    >
-                      <RefreshCw className="w-3 h-3" /> Reorder
-                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => {
+                          ord.items.forEach(i => addToCart(i.product, i.quantity));
+                          setReorderedOrderId(ord.id);
+                          setTimeout(() => setReorderedOrderId(null), 2500);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl border border-orange-500 text-orange-700 dark:text-orange-300 font-bold hover:bg-orange-50 dark:hover:bg-orange-950/40 text-xs flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Reorder
+                      </button>
+                      {reorderedOrderId === ord.id && (
+                        <span className="absolute -top-7 right-0 bg-[#FF6A00] text-white text-[10px] font-black px-2 py-0.5 rounded shadow whitespace-nowrap animate-in fade-in zoom-in-95 z-20">
+                          ✓ Added to cart!
+                        </span>
+                      )}
+                    </div>
 
                     {/* Live Track Button */}
                     <button
@@ -255,9 +271,9 @@ export const OrderHistoryModal: React.FC<OrderHistoryModalProps> = ({
                         onClose();
                         onTrackOrder(ord.id);
                       }}
-                      className="bg-orange-500 hover:bg-orange-600 text-white font-black px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 shadow-sm"
+                      className="bg-orange-500 hover:bg-orange-600 text-white font-black px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 shadow-sm transition-transform active:scale-95 cursor-pointer"
                     >
-                      Track Live
+                      {ord.status === 'delivered' ? 'View Journey' : 'Track Live'}
                     </button>
                   </div>
                 </div>

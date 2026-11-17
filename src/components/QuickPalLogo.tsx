@@ -80,12 +80,12 @@ export const QuickPalLogo: React.FC<QuickPalLogoProps> = ({
       <div className="flex flex-col">
         {showFestiveTag && (
           <div className="flex items-center gap-1 mb-0.5">
-            <span className="text-[9px] font-black uppercase tracking-wider text-amber-200 bg-amber-950/80 px-1.5 py-0.2 rounded border border-amber-500/30 flex items-center gap-1">
-              <span>🌸</span>
-              <span>Ganesh Utsav</span>
+            <span className="text-[9px] font-black uppercase tracking-wider text-orange-400 bg-neutral-900/90 px-1.5 py-0.5 rounded border border-orange-500/30 flex items-center gap-1">
+              <span>⚡</span>
+              <span>30-Min Delivery</span>
             </span>
-            <span className="text-[9px] font-bold text-amber-100/90 hidden sm:inline">
-              • 30-Min Delivery
+            <span className="text-[9px] font-bold text-neutral-300 hidden sm:inline">
+              • Saphale 401102
             </span>
           </div>
         )}

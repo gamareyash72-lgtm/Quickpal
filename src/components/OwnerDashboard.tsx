@@ -22,7 +22,8 @@ import {
   XCircle,
   KeyRound,
   Shield,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Store
 } from 'lucide-react';
 
 export const OwnerDashboard: React.FC = () => {
@@ -31,6 +32,7 @@ export const OwnerDashboard: React.FC = () => {
     users,
     partners,
     products,
+    stores,
     createUserByAdmin,
     deleteUser,
     toggleUserStatus,
@@ -44,6 +46,8 @@ export const OwnerDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<
     'overview' | 'accounts' | 'products' | 'categories' | 'orders' | 'payment_audit' | 'partners' | 'coupons' | 'banners' | 'payments' | 'faqs' | 'tickets' | 'reports'
   >('overview');
+  const [adminInitialTab, setAdminInitialTab] = useState<'products' | 'stores' | undefined>(undefined);
+  const adminPanelRef = React.useRef<HTMLDivElement>(null);
 
   // Staff Provisioning Modal State
   const [showUserModal, setShowUserModal] = useState(false);
@@ -159,6 +163,17 @@ export const OwnerDashboard: React.FC = () => {
             title="Clean all trial & demo data from all 4 portals"
           >
             <Trash2 className="w-4 h-4 text-rose-200" /> Purge All Trial Data
+          </button>
+          <button
+            onClick={() => {
+              setAdminInitialTab('stores');
+              setTimeout(() => {
+                adminPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 80);
+            }}
+            className="bg-orange-100 hover:bg-white text-orange-950 font-black text-xs px-4 py-2.5 rounded-2xl shadow-lg flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+          >
+            <Store className="w-4 h-4 text-[#FF6A00]" /> Register Store ({stores.length})
           </button>
           <button
             onClick={() => setShowUserModal(true)}
@@ -381,7 +396,7 @@ export const OwnerDashboard: React.FC = () => {
       </div>
 
       {/* Render Full Admin Dashboard Capabilities under Owner Authority */}
-      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-2 sm:p-4 space-y-4">
+      <div ref={adminPanelRef} className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-2 sm:p-4 space-y-4">
         <div className="px-2 pt-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-amber-500" />
@@ -390,12 +405,12 @@ export const OwnerDashboard: React.FC = () => {
             </h3>
           </div>
           <span className="text-[11px] font-bold text-gray-400 hidden sm:block">
-            Owner Authority: Full access to all 12 operational modules
+            Owner Authority: Full access including Partner Store Registration
           </span>
         </div>
 
         {/* Embedded AdminDashboard with full capabilities */}
-        <AdminDashboard isOwnerMode={true} />
+        <AdminDashboard isOwnerMode={true} initialTab={adminInitialTab} />
       </div>
 
       {/* Modal for Provisioning New Staff Account */}
