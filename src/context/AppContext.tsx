@@ -177,6 +177,7 @@ interface AppContextType {
   deleteCategory: (categoryId: string) => void;
   registerPartner: (partner: Omit<DeliveryPartner, 'id' | 'totalEarnings' | 'completedOrdersCount' | 'rating'> & { email?: string; password?: string }) => Promise<any>;
   updatePartner: (partner: DeliveryPartner) => void;
+  updatePartnerCredentials: (partnerId: string, creds: { name?: string; phone?: string; email?: string; password?: string; vehicleType?: string; vehicleNumber?: string; currentLocationName?: string; pinCode?: string; isOnline?: boolean }) => Promise<{ success: boolean; message: string; user?: AppUser }>;
   deletePartner: (partnerId: string) => Promise<void>;
   clearFakePartners: () => Promise<void>;
   purgeAllTrialData: () => Promise<{ success: boolean; message: string }>;
@@ -771,15 +772,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const isDeliveryPartnerUser = currentUser && currentUser.role === 'partner';
 
+  const normalizePhoneDigits = (p?: string): string => {
+    const digits = (p || '').replace(/\D/g, '');
+    return digits.length > 10 ? digits.slice(-10) : digits;
+  };
+
   const currentUserPartner = isDeliveryPartnerUser
     ? (
-        partners.find(p => 
-          p.id === currentUser.id ||
-          (currentUser.phone && p.phone === currentUser.phone) ||
-          p.name.toLowerCase() === currentUser.name.toLowerCase() ||
-          p.name.toLowerCase().includes(currentUser.name.toLowerCase()) ||
-          currentUser.name.toLowerCase().includes(p.name.toLowerCase())
-        ) || {
+        partners.find(p => {
+          const pDigits = normalizePhoneDigits(p.phone);
+          const uDigits = normalizePhoneDigits(currentUser.phone);
+          return (
+            p.id === currentUser.id ||
+            (pDigits.length >= 6 && uDigits.length >= 6 && pDigits === uDigits) ||
+            p.name.toLowerCase() === currentUser.name.toLowerCase() ||
+            p.name.toLowerCase().includes(currentUser.name.toLowerCase()) ||
+            currentUser.name.toLowerCase().includes(p.name.toLowerCase())
+          );
+        }) || {
           id: currentUser.id || 'partner-yash',
           name: currentUser.name || 'Delivery Partner',
           phone: currentUser.phone || '',
@@ -968,274 +978,431 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
     }
 
-    // Lookup staff email if username or phone was provided
-    let targetEmail = cleanEmail;
-    const matchedUser = users.find(u => 
-      (u.username && u.username.toLowerCase() === cleanEmail) || 
-      (u.email && u.email.toLowerCase() === cleanEmail) ||
-      (u.phone && u.phone.replace(/\s+/g, '').includes(cleanEmail.replace(/\s+/g, '')))
-    );
-    if (matchedUser?.email) {
-      targetEmail = matchedUser.email;
+    const matchesIdentifier = (u: Partial<AppUser>, rawInput: string): boolean => {
+      const lower = rawInput.trim().toLowerCase();
+      if (!lower) return false;
+      if (u.email && u.email.trim().toLowerCase() === lower) return true;
+      if (u.username && u.username.trim().toLowerCase() === lower) return true;
+      if (u.id && String(u.id).trim().toLowerCase() === lower) return true;
+      const inDigits = normalizePhoneDigits(rawInput);
+      const uDigits = normalizePhoneDigits(u.phone);
+      if (inDigits.length >= 6 && uDigits.length >= 6 && (uDigits === inDigits || uDigits.endsWith(inDigits) || inDigits.endsWith(uDigits))) {
+        return true;
+      }
+      return false;
+    };
+
+    const pickBestUserMatch = (candidates: AppUser[]): AppUser | null => {
+      if (!candidates.length) return null;
+      const exactRole = candidates.find(u => {
+        const nr = (u.role as string) === 'delivery_partner' ? 'partner' : u.role;
+        return nr === role;
+      });
+      return exactRole || candidates[0];
+    };
+
+    // Lookup staff/partner account locally first (supports Email, Username, Staff ID, OR Phone Number)
+    let matchedUser: AppUser | null = pickBestUserMatch(users.filter(u => matchesIdentifier(u, cleanId)));
+
+    // If not found in local memory (e.g. fresh device/browser or Firestore snapshot pending), query Firestore users & partners
+    if (!matchedUser && db) {
+      try {
+        const fsCandidates: AppUser[] = [];
+        if (cleanEmail.includes('@')) {
+          const qEmail = query(collection(db, 'users'), where('email', '==', cleanEmail));
+          const qSnap = await getDocs(qEmail);
+          qSnap.forEach(d => fsCandidates.push({ id: d.id, ...(d.data() as AppUser) }));
+        }
+        if (fsCandidates.length === 0) {
+          const qUser = query(collection(db, 'users'), where('username', '==', cleanEmail));
+          const qUserSnap = await getDocs(qUser);
+          qUserSnap.forEach(d => fsCandidates.push({ id: d.id, ...(d.data() as AppUser) }));
+        }
+        if (fsCandidates.length === 0) {
+          const allUsersSnap = await getDocs(collection(db, 'users'));
+          allUsersSnap.forEach(d => {
+            const candidate = { id: d.id, ...(d.data() as AppUser) };
+            if (matchesIdentifier(candidate, cleanId)) {
+              fsCandidates.push(candidate);
+            }
+          });
+        }
+        if (fsCandidates.length > 0) {
+          matchedUser = pickBestUserMatch(fsCandidates);
+        }
+      } catch (lookupErr) {
+        console.warn("Firestore pre-auth user lookup notice:", lookupErr);
+      }
     }
 
-    if (!targetEmail || !targetEmail.includes('@')) {
-      return {
-        success: false,
-        message: '[auth/invalid-email] Please enter a valid account email address or registered store/staff Login ID.'
-      };
-    }
-
-    try {
-      // Authenticate directly with Firebase Authentication
-      const userCredential = await signInWithEmailAndPassword(auth, targetEmail, password);
-      const uid = userCredential.user.uid;
-      const fbEmail = userCredential.user.email || targetEmail;
-
-      // Fetch user document directly from Firestore to verify profile & assigned role
-      const userDocRef = doc(db, 'users', uid);
-      const userSnap = await getDoc(userDocRef);
-
-      let userData: AppUser;
-
-      if (!userSnap.exists()) {
-        const assignedRole = (isMasterOwnerEmail(fbEmail) && role === 'owner') ? 'owner' : role;
-        userData = {
-          id: uid,
-          name: fbEmail.split('@')[0] || (assignedRole === 'customer' ? 'Customer' : assignedRole.toUpperCase()),
-          email: fbEmail,
-          role: assignedRole,
+    // If logging into Partner portal and still not found in users, check DeliveryPartner records by phone/id
+    if (!matchedUser && role === 'partner') {
+      let partnerList = partners;
+      if (db && partnerList.length === 0) {
+        try {
+          const pSnap = await getDocs(collection(db, 'partners'));
+          partnerList = pSnap.docs.map(d => ({ id: d.id, ...(d.data() as DeliveryPartner) }));
+        } catch {}
+      }
+      const inDigits = normalizePhoneDigits(cleanId);
+      const matchedPartner = partnerList.find(p => {
+        const pDigits = normalizePhoneDigits(p.phone);
+        return (
+          String(p.id).toLowerCase() === cleanEmail ||
+          (inDigits.length >= 6 && pDigits.length >= 6 && pDigits === inDigits) ||
+          ((p as any).email && String((p as any).email).toLowerCase() === cleanEmail)
+        );
+      });
+      if (matchedPartner) {
+        const partnerLinkedUser = users.find(u =>
+          u.id === matchedPartner.id ||
+          (normalizePhoneDigits(u.phone) && normalizePhoneDigits(u.phone) === normalizePhoneDigits(matchedPartner.phone))
+        );
+        matchedUser = partnerLinkedUser || {
+          id: matchedPartner.id,
+          name: matchedPartner.name,
+          phone: matchedPartner.phone,
+          email: (matchedPartner as any).email || '',
+          password: (matchedPartner as any).password,
+          role: 'partner',
           status: 'ACTIVE',
           isActive: true,
           createdAt: new Date().toISOString()
         };
-        try {
-          await setDoc(userDocRef, userData);
-        } catch (setErr) {
-          console.warn("Firestore setDoc notice during login:", setErr);
-        }
-      } else {
-        userData = userSnap.data() as AppUser;
       }
+    }
 
-      // Auto-elevate master owner email if logging into owner portal
-      if (isMasterOwnerEmail(fbEmail) && (role === 'owner' || role === 'admin')) {
-        if (userData.role !== 'owner') {
-          userData.role = 'owner';
+    const targetEmail = (matchedUser?.email || (cleanEmail.includes('@') ? cleanEmail : '')).trim().toLowerCase();
+
+    if (!targetEmail && !matchedUser) {
+      return {
+        success: false,
+        message: role === 'partner'
+          ? 'No Delivery Partner account found with this Mobile Number, Email, or ID. Please verify or ask Admin to register the partner first.'
+          : '[auth/invalid-email] Please enter a valid account email address or registered store/staff Login ID.'
+      };
+    }
+
+    let lastAuthError: any = null;
+
+    if (targetEmail && targetEmail.includes('@')) {
+      try {
+        // Authenticate directly with Firebase Authentication
+        const userCredential = await signInWithEmailAndPassword(auth, targetEmail, password);
+        const uid = userCredential.user.uid;
+        const fbEmail = userCredential.user.email || targetEmail;
+
+        // Fetch user document directly from Firestore to verify profile & assigned role
+        const userDocRef = doc(db, 'users', uid);
+        const userSnap = await getDoc(userDocRef);
+
+        let userData: AppUser;
+
+        if (!userSnap.exists()) {
+          const assignedRole = (isMasterOwnerEmail(fbEmail) && role === 'owner') ? 'owner' : (matchedUser?.role || role);
+          userData = {
+            id: uid,
+            name: matchedUser?.name || fbEmail.split('@')[0] || (assignedRole === 'customer' ? 'Customer' : assignedRole.toUpperCase()),
+            email: fbEmail,
+            phone: matchedUser?.phone || '',
+            role: assignedRole,
+            status: 'ACTIVE',
+            isActive: true,
+            createdAt: new Date().toISOString()
+          };
           try {
-            await updateDoc(userDocRef, { role: 'owner' });
-          } catch (e) {
-            console.warn("Firestore owner elevation notice:", e);
+            await setDoc(userDocRef, cleanFirestoreData(userData), { merge: true });
+          } catch (setErr) {
+            console.warn("Firestore setDoc notice during login:", setErr);
+          }
+        } else {
+          userData = { id: uid, ...(userSnap.data() as AppUser) };
+        }
+
+        // Auto-elevate master owner email if logging into owner portal
+        if (isMasterOwnerEmail(fbEmail) && (role === 'owner' || role === 'admin')) {
+          if (userData.role !== 'owner') {
+            userData.role = 'owner';
+            try {
+              await updateDoc(userDocRef, { role: 'owner' });
+            } catch (e) {
+              console.warn("Firestore owner elevation notice:", e);
+            }
           }
         }
-      }
 
-      // Verify user account status
-      if (userData.status === 'INACTIVE' || userData.status === 'SUSPENDED' || userData.isActive === false) {
-        await signOut(auth);
-        return {
-          success: false,
-          message: `Account '${userData.name}' is currently disabled or ${userData.status}. Access has been revoked.`
-        };
-      }
-
-      // PORTAL ROLE AUTHORIZATION CHECKS (Authoritative role from Firestore)
-      let actualRole = userData.role;
-      if ((actualRole as string) === 'delivery_partner') {
-        actualRole = 'partner';
-        userData.role = 'partner';
-      }
-
-      if (!actualRole || !['customer', 'partner', 'store', 'admin', 'owner'].includes(actualRole)) {
-        await signOut(auth);
-        return {
-          success: false,
-          message: 'Access Denied: Invalid or unassigned user role in database profile.'
-        };
-      }
-
-      // Store user linked store verification & active check
-      if (actualRole === 'store') {
-        const linkedStore = stores.find(s =>
-          (userData.storeId && s.id === userData.storeId) ||
-          (userData.username && s.loginId?.toLowerCase() === userData.username.toLowerCase()) ||
-          (userData.email && s.ownerEmail?.toLowerCase() === userData.email.toLowerCase())
-        );
-        if (linkedStore) {
-          if (linkedStore.isActive === false) {
-            await signOut(auth);
-            return {
-              success: false,
-              message: `Store '${linkedStore.name}' is currently disabled by QuickPal Admin. Please contact Admin.`
-            };
-          }
-          userData = { ...userData, storeId: linkedStore.id };
+        // Verify user account status
+        if (userData.status === 'INACTIVE' || userData.status === 'SUSPENDED' || userData.isActive === false) {
+          await signOut(auth);
+          return {
+            success: false,
+            message: `Account '${userData.name}' is currently disabled or ${userData.status}. Access has been revoked.`
+          };
         }
-      }
 
-      // 1. OWNER trying to access non-owner staff portal (e.g. Delivery Partner portal)
-      if (actualRole === 'owner' && role !== 'owner' && role !== 'customer') {
-        await signOut(auth);
-        return {
-          success: false,
-          message: 'This account is registered as OWNER. Please use the Owner Portal.'
-        };
-      }
+        // PORTAL ROLE AUTHORIZATION CHECKS (Authoritative role from Firestore)
+        let actualRole = userData.role;
+        if ((actualRole as string) === 'delivery_partner') {
+          actualRole = 'partner';
+          userData.role = 'partner';
+        }
 
-      // 2. Only a user whose Firestore role is DELIVERY_PARTNER can enter the Delivery Partner Dashboard
-      if (role === 'partner' && actualRole !== 'partner') {
-        await signOut(auth);
-        if (actualRole === 'owner') {
+        if (!actualRole || !['customer', 'partner', 'store', 'admin', 'owner'].includes(actualRole)) {
+          await signOut(auth);
+          return {
+            success: false,
+            message: 'Access Denied: Invalid or unassigned user role in database profile.'
+          };
+        }
+
+        // Store user linked store verification & active check
+        if (actualRole === 'store') {
+          const linkedStore = stores.find(s =>
+            (userData.storeId && s.id === userData.storeId) ||
+            (userData.username && s.loginId?.toLowerCase() === userData.username.toLowerCase()) ||
+            (userData.email && s.ownerEmail?.toLowerCase() === userData.email.toLowerCase())
+          );
+          if (linkedStore) {
+            if (linkedStore.isActive === false) {
+              await signOut(auth);
+              return {
+                success: false,
+                message: `Store '${linkedStore.name}' is currently disabled by QuickPal Admin. Please contact Admin.`
+              };
+            }
+            userData = { ...userData, storeId: linkedStore.id };
+          }
+        }
+
+        // 1. OWNER trying to access non-owner staff portal (e.g. Delivery Partner portal)
+        if (actualRole === 'owner' && role !== 'owner' && role !== 'customer') {
+          await signOut(auth);
           return {
             success: false,
             message: 'This account is registered as OWNER. Please use the Owner Portal.'
           };
         }
+
+        // 2. Only a user whose Firestore role is DELIVERY_PARTNER can enter the Delivery Partner Dashboard
+        if (role === 'partner' && actualRole !== 'partner') {
+          await signOut(auth);
+          if (actualRole === 'owner') {
+            return {
+              success: false,
+              message: 'This account is registered as OWNER. Please use the Owner Portal.'
+            };
+          }
+          return {
+            success: false,
+            message: `Access Denied: Your account is registered as '${actualRole.toUpperCase()}'. Only a registered Delivery Partner can enter the Delivery Partner Dashboard.`
+          };
+        }
+
+        // 3. Only a user whose Firestore role is OWNER can enter the Owner Dashboard
+        if (role === 'owner' && actualRole !== 'owner') {
+          await signOut(auth);
+          return {
+            success: false,
+            message: `Access Denied: Your account is registered as '${actualRole.toUpperCase()}'. Only an OWNER account can enter the Owner Dashboard.`
+          };
+        }
+
+        // 4. Customer accounts CANNOT log into staff/owner portals
+        if (role !== 'customer' && actualRole === 'customer') {
+          await signOut(auth);
+          return {
+            success: false,
+            message: 'Access Denied: Customer accounts are strictly prohibited from accessing staff or owner portals.'
+          };
+        }
+
+        // 5. General staff access guard
+        if (
+          role !== 'customer' &&
+          actualRole !== role &&
+          !(actualRole === 'admin' && (role === 'store' || role === 'partner'))
+        ) {
+          await signOut(auth);
+          return {
+            success: false,
+            message: `Access Denied: Your account is registered as '${actualRole.toUpperCase()}'. You do not have permission to access the '${role.toUpperCase()}' portal.`
+          };
+        }
+
+        setCurrentUser(userData);
+        const { mode: activePortal } = getDetectedPortalMode();
+        if (activePortal === 'customer' && actualRole !== 'store') {
+          setCurrentRole('customer');
+        } else {
+          setCurrentRole(userData.role);
+        }
+
         return {
-          success: false,
-          message: `Access Denied: Your account is registered as '${actualRole.toUpperCase()}'. Only a registered Delivery Partner can enter the Delivery Partner Dashboard.`
+          success: true,
+          message: `Welcome back, ${userData.name}! Authenticated as ${userData.role.toUpperCase()}.`,
+          user: userData
         };
+      } catch (err: any) {
+        lastAuthError = err;
+        console.warn("[Firebase Auth] Notice during signInWithEmailAndPassword:", err?.code || err?.message || err);
       }
+    }
 
-      // 3. Only a user whose Firestore role is OWNER can enter the Owner Dashboard
-      if (role === 'owner' && actualRole !== 'owner') {
-        await signOut(auth);
-        return {
-          success: false,
-          message: `Access Denied: Your account is registered as '${actualRole.toUpperCase()}'. Only an OWNER account can enter the Owner Dashboard.`
-        };
-      }
+    const errorCode = lastAuthError?.code || 'auth/database-fallback';
 
-      // 4. Customer accounts CANNOT log into staff/owner portals
-      if (role !== 'customer' && actualRole === 'customer') {
-        await signOut(auth);
-        return {
-          success: false,
-          message: 'Access Denied: Customer accounts are strictly prohibited from accessing staff or owner portals.'
-        };
-      }
+    // Database-backed Authentication Fallback (supports PINs <6 chars, phone logins, and Admin-provisioned DB profiles)
+    try {
+      let matchedDoc: AppUser | null = matchedUser;
 
-      // 5. General staff access guard
-      if (
-        role !== 'customer' &&
-        actualRole !== role &&
-        !(actualRole === 'admin' && (role === 'store' || role === 'partner'))
-      ) {
-        await signOut(auth);
-        return {
-          success: false,
-          message: `Access Denied: Your account is registered as '${actualRole.toUpperCase()}'. You do not have permission to access the '${role.toUpperCase()}' portal.`
-        };
-      }
-
-      setCurrentUser(userData);
-      const { mode: activePortal } = getDetectedPortalMode();
-      if (activePortal === 'customer' && actualRole !== 'store') {
-        setCurrentRole('customer');
-      } else {
-        setCurrentRole(userData.role);
-      }
-
-      return {
-        success: true,
-        message: `Welcome back, ${userData.name}! Authenticated as ${userData.role.toUpperCase()}.`,
-        user: userData
-      };
-    } catch (err: any) {
-      console.warn("[Firebase Auth] Notice during signInWithEmailAndPassword:", err?.code || err?.message || err);
-      const errorCode = err?.code || 'auth/unknown-error';
-
-      // Fallback: Attempt Firestore database lookup for database-provisioned accounts
-      try {
-        const qEmail = query(collection(db, 'users'), where('email', '==', targetEmail));
-        const qSnap = await getDocs(qEmail);
-        let matchedDoc: AppUser | null = qSnap.docs.length > 0 ? (qSnap.docs[0].data() as AppUser) : null;
-
+      if (!matchedDoc && db) {
+        if (targetEmail) {
+          const qEmail = query(collection(db, 'users'), where('email', '==', targetEmail));
+          const qSnap = await getDocs(qEmail);
+          if (qSnap.docs.length > 0) {
+            matchedDoc = { id: qSnap.docs[0].id, ...(qSnap.docs[0].data() as AppUser) };
+          }
+        }
         if (!matchedDoc) {
           const qUser = query(collection(db, 'users'), where('username', '==', cleanEmail));
           const qUserSnap = await getDocs(qUser);
           if (qUserSnap.docs.length > 0) {
-            matchedDoc = qUserSnap.docs[0].data() as AppUser;
+            matchedDoc = { id: qUserSnap.docs[0].id, ...(qUserSnap.docs[0].data() as AppUser) };
           }
         }
+      }
 
-        if (!matchedDoc) {
-          const localMatch = users.find(u => 
-            (u.email && u.email.toLowerCase() === targetEmail) || 
-            (u.username && u.username.toLowerCase() === cleanEmail)
-          );
-          if (localMatch) matchedDoc = localMatch;
+      if (!matchedDoc) {
+        matchedDoc = pickBestUserMatch(users.filter(u => matchesIdentifier(u, cleanId)));
+      }
+
+      if (matchedDoc) {
+        let actualRole = matchedDoc.role;
+        if ((actualRole as string) === 'delivery_partner') {
+          actualRole = 'partner';
+          matchedDoc = { ...matchedDoc, role: 'partner' };
         }
 
-        if (matchedDoc) {
-          let actualRole = matchedDoc.role;
-          if ((actualRole as string) === 'delivery_partner') {
-            actualRole = 'partner';
-            matchedDoc.role = 'partner';
-          }
-
-          if (matchedDoc.status === 'INACTIVE' || matchedDoc.status === 'SUSPENDED' || matchedDoc.isActive === false) {
+        // Strict Password / PIN verification for database-managed accounts
+        if (matchedDoc.password) {
+          if (String(matchedDoc.password) !== String(password)) {
             return {
               success: false,
-              message: `Account '${matchedDoc.name}' is currently disabled or ${matchedDoc.status}. Access has been revoked.`
+              message: 'Incorrect password / Security PIN. Please verify the credentials issued by QuickPal Admin.'
             };
           }
-
-          if (actualRole === 'store') {
-            const linkedStore = stores.find(s =>
-              (matchedDoc?.storeId && s.id === matchedDoc.storeId) ||
-              (matchedDoc?.username && s.loginId?.toLowerCase() === matchedDoc.username.toLowerCase()) ||
-              (matchedDoc?.email && s.ownerEmail?.toLowerCase() === matchedDoc.email.toLowerCase())
-            );
-            if (linkedStore) {
-              if (linkedStore.isActive === false) {
-                return {
-                  success: false,
-                  message: `Store '${linkedStore.name}' is currently disabled by QuickPal Admin. Please contact Admin.`
-                };
-              }
-              matchedDoc = { ...matchedDoc, storeId: linkedStore.id };
-            }
-          }
-
-          if (role !== 'customer' && actualRole !== role && !(actualRole === 'admin' && (role === 'store' || role === 'partner')) && actualRole !== 'owner') {
+        } else {
+          // If no DB password is saved, do NOT allow arbitrary passwords to log in
+          if (actualRole === 'partner') {
             return {
               success: false,
-              message: `Access Denied: Your account is registered as '${actualRole.toUpperCase()}'. You do not have permission to access the '${role.toUpperCase()}' portal.`
+              message: 'No password/PIN has been set for this Delivery Partner account yet. Please ask Admin to set a Password in Admin → Delivery Partners.'
             };
-          }
-
-          setCurrentUser(matchedDoc);
-          const { mode: activePortal } = getDetectedPortalMode();
-          if (activePortal === 'customer' && actualRole !== 'store') {
-            setCurrentRole('customer');
-          } else {
-            setCurrentRole(matchedDoc.role);
           }
           return {
-            success: true,
-            message: `Welcome back, ${matchedDoc.name}! Authenticated as ${matchedDoc.role.toUpperCase()}.`,
-            user: matchedDoc
+            success: false,
+            message: `[${errorCode}] Invalid credentials. Please verify your registered email and password.`
           };
         }
-      } catch (dbErr) {
-        console.warn("Firestore lookup fallback notice:", dbErr);
-      }
 
-      let errorMsg = err.message || "Authentication failed.";
-      if (errorCode === 'auth/operation-not-allowed') {
-        errorMsg = 'Email/Password authentication is disabled in Firebase Console. Use "Sign in with Google" or provisioned staff credentials.';
-      } else if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/user-not-found' || errorCode === 'auth/wrong-password') {
-        errorMsg = 'Invalid credentials. Please verify your registered email/username and password.';
-      } else if (errorCode === 'auth/too-many-requests') {
-        errorMsg = 'Access to this account has been temporarily disabled due to many failed login attempts.';
-      }
+        if (matchedDoc.status === 'INACTIVE' || matchedDoc.status === 'SUSPENDED' || matchedDoc.isActive === false) {
+          return {
+            success: false,
+            message: `Account '${matchedDoc.name}' is currently disabled or ${matchedDoc.status}. Access has been revoked.`
+          };
+        }
 
-      return {
-        success: false,
-        message: `[${errorCode}] ${errorMsg}`
-      };
+        if (actualRole === 'store') {
+          const linkedStore = stores.find(s =>
+            (matchedDoc?.storeId && s.id === matchedDoc.storeId) ||
+            (matchedDoc?.username && s.loginId?.toLowerCase() === matchedDoc.username.toLowerCase()) ||
+            (matchedDoc?.email && s.ownerEmail?.toLowerCase() === matchedDoc.email.toLowerCase())
+          );
+          if (linkedStore) {
+            if (linkedStore.isActive === false) {
+              return {
+                success: false,
+                message: `Store '${linkedStore.name}' is currently disabled by QuickPal Admin. Please contact Admin.`
+              };
+            }
+            matchedDoc = { ...matchedDoc, storeId: linkedStore.id };
+          }
+        }
+
+        // Same strict role guards as Firebase Auth path
+        if (actualRole === 'owner' && role !== 'owner' && role !== 'customer') {
+          return {
+            success: false,
+            message: 'This account is registered as OWNER. Please use the Owner Portal.'
+          };
+        }
+
+        if (role === 'partner' && actualRole !== 'partner') {
+          return {
+            success: false,
+            message: `Access Denied: Your account is registered as '${actualRole.toUpperCase()}'. Only a registered Delivery Partner can enter the Delivery Partner Dashboard.`
+          };
+        }
+
+        if (role === 'owner' && actualRole !== 'owner') {
+          return {
+            success: false,
+            message: `Access Denied: Your account is registered as '${actualRole.toUpperCase()}'. Only an OWNER account can enter the Owner Dashboard.`
+          };
+        }
+
+        if (role !== 'customer' && actualRole === 'customer') {
+          return {
+            success: false,
+            message: 'Access Denied: Customer accounts are strictly prohibited from accessing staff or owner portals.'
+          };
+        }
+
+        if (
+          role !== 'customer' &&
+          actualRole !== role &&
+          !(actualRole === 'admin' && (role === 'store' || role === 'partner'))
+        ) {
+          return {
+            success: false,
+            message: `Access Denied: Your account is registered as '${actualRole.toUpperCase()}'. You do not have permission to access the '${role.toUpperCase()}' portal.`
+          };
+        }
+
+        // Clear any mismatched previous Firebase Auth user so onAuthStateChanged won't revert session
+        if (auth.currentUser) {
+          try { await signOut(auth); } catch {}
+        }
+
+        setCurrentUser(matchedDoc);
+        const { mode: activePortal } = getDetectedPortalMode();
+        if (activePortal === 'customer' && actualRole !== 'store') {
+          setCurrentRole('customer');
+        } else {
+          setCurrentRole(matchedDoc.role);
+        }
+        return {
+          success: true,
+          message: `Welcome back, ${matchedDoc.name}! Authenticated as ${matchedDoc.role.toUpperCase()}.`,
+          user: matchedDoc
+        };
+      }
+    } catch (dbErr) {
+      console.warn("Firestore lookup fallback notice:", dbErr);
     }
+
+    let errorMsg = lastAuthError?.message || "Authentication failed.";
+    if (errorCode === 'auth/operation-not-allowed') {
+      errorMsg = 'Email/Password authentication is disabled in Firebase Console. Use "Sign in with Google" or provisioned staff credentials.';
+    } else if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/user-not-found' || errorCode === 'auth/wrong-password') {
+      errorMsg = 'Invalid credentials. Please verify your registered mobile number / email and password.';
+    } else if (errorCode === 'auth/too-many-requests') {
+      errorMsg = 'Access to this account has been temporarily disabled due to many failed login attempts.';
+    }
+
+    return {
+      success: false,
+      message: `[${errorCode}] ${errorMsg}`
+    };
   };
 
   const loginWithGoogle = async (requestedRole: UserRole = 'customer') => {
@@ -1529,8 +1696,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         name: userData.name,
         role: userData.role,
         username: userData.username || resolvedEmail.split('@')[0],
-        email: resolvedEmail,
+        email: resolvedEmail.toLowerCase(),
         phone: userData.phone || '',
+        password: tempPassword,
         status: userData.status || 'ACTIVE',
         isActive: userData.status !== 'INACTIVE',
         createdAt: new Date().toISOString(),
@@ -1539,7 +1707,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
 
       try {
-        await setDoc(doc(db, 'users', uid), cleanFirestoreData(newUser));
+        await setDoc(doc(db, 'users', uid), cleanFirestoreData(newUser), { merge: true });
       } catch (dbErr) {
         console.error("Firestore setDoc error:", dbErr);
       }
@@ -1552,7 +1720,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           name: newUser.name,
           phone: newUser.phone || '+91 98000 00000',
           vehicleType: 'EV Bike',
-          vehicleNumber: 'DL-01-QP-' + Math.floor(1000 + Math.random() * 9000),
+          vehicleNumber: 'MH-04-QP-' + Math.floor(1000 + Math.random() * 9000),
           isOnline: true,
           totalEarnings: 0,
           completedOrdersCount: 0,
@@ -1560,12 +1728,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           currentLocationName: 'Saphale Dark Store Hub',
           pinCode: '401102'
         };
-        setPartners(prev => [...prev, newPartner]);
+        setPartners(prev => [newPartner, ...prev.filter(p => p.id !== uid)]);
+        if (db) {
+          try {
+            await setDoc(doc(db, 'partners', uid), cleanFirestoreData(newPartner), { merge: true });
+          } catch (pErr) {
+            console.warn("Firestore partner profile sync notice:", pErr);
+          }
+        }
       }
 
       return {
         success: true,
-        message: `Successfully provisioned ${userData.role.toUpperCase()} account for ${userData.name}.`,
+        message: `Successfully provisioned ${userData.role.toUpperCase()} account for ${userData.name}. Login Email: ${resolvedEmail}`,
         user: newUser
       };
     } catch (err: any) {
@@ -2952,7 +3127,55 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const registerPartner = async (partnerData: Omit<DeliveryPartner, 'id' | 'totalEarnings' | 'completedOrdersCount' | 'rating'> & { email?: string; password?: string }) => {
-    const partnerId = 'partner-' + Date.now();
+    const cleanNameSlug = partnerData.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'partner';
+    const partnerEmail = (partnerData.email?.trim() || `${cleanNameSlug}${Date.now().toString().slice(-4)}@partnerquickpal.in`).toLowerCase();
+    const partnerPassword = (partnerData.password || '').trim() || 'partner123';
+
+    let partnerId = '';
+
+    // 1. Provision via Backend API / Firebase Auth when password >= 6 chars
+    if (partnerPassword.length >= 6) {
+      try {
+        const apiResp = await fetch('/api/admin/create-delivery-partner', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: partnerData.name,
+            email: partnerEmail,
+            password: partnerPassword,
+            phone: partnerData.phone,
+            role: 'delivery_partner',
+            username: partnerEmail.split('@')[0],
+            serviceArea: 'Saphale (401102)',
+            status: 'active'
+          })
+        });
+        if (apiResp.ok) {
+          const apiData = await apiResp.json();
+          if (apiData.success && apiData.uid) {
+            partnerId = apiData.uid;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Backend partner registration notice, trying secondary Auth:', apiErr);
+      }
+
+      if (!partnerId) {
+        try {
+          const secondaryUser = await createSecondaryAuthUser(partnerEmail, partnerPassword);
+          if (secondaryUser?.uid) {
+            partnerId = secondaryUser.uid;
+          }
+        } catch (authErr) {
+          console.warn('Secondary Auth partner registration notice:', authErr);
+        }
+      }
+    }
+
+    if (!partnerId) {
+      partnerId = 'partner-' + Date.now();
+    }
+
     const newPartner: DeliveryPartner = {
       ...partnerData,
       id: partnerId,
@@ -2964,17 +3187,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       pinCode: partnerData.pinCode || '401102'
     };
 
-    // Also register corresponding AppUser record for partner login
-    const partnerEmail = partnerData.email?.trim() || `${partnerData.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'partner'}${Date.now().toString().slice(-4)}@partnerquickpal.in`;
     const partnerUser: AppUser = {
       id: partnerId,
       name: newPartner.name,
       email: partnerEmail,
       phone: newPartner.phone,
       username: partnerEmail.split('@')[0],
+      password: partnerPassword,
       role: 'partner',
       status: 'ACTIVE',
       isActive: true,
+      isVerified: true,
       createdAt: new Date().toISOString(),
       serviceArea: 'Saphale (401102)'
     };
@@ -2984,8 +3207,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (db) {
       try {
-        await setDoc(doc(db, 'partners', partnerId), cleanFirestoreData(newPartner));
-        await setDoc(doc(db, 'users', partnerId), cleanFirestoreData(partnerUser));
+        await setDoc(doc(db, 'partners', partnerId), cleanFirestoreData(newPartner), { merge: true });
+        await setDoc(doc(db, 'users', partnerId), cleanFirestoreData(partnerUser), { merge: true });
         console.log('Partner registered to Firestore partners & users successfully:', partnerId);
       } catch (e) {
         console.warn('Firestore registerPartner error:', e);
@@ -2999,14 +3222,125 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       type: 'system'
     });
 
-    return { success: true, partner: newPartner, user: partnerUser };
+    return {
+      success: true,
+      partner: newPartner,
+      user: partnerUser,
+      credentials: {
+        email: partnerEmail,
+        phone: newPartner.phone,
+        username: partnerUser.username || partnerEmail.split('@')[0],
+        password: partnerPassword
+      }
+    };
   };
 
   const updatePartner = (updated: DeliveryPartner) => {
     setPartners(prev => prev.map(p => p.id === updated.id ? updated : p));
     if (db) {
-      setDoc(doc(db, 'partners', updated.id), cleanFirestoreData(updated)).catch(e => console.warn('Firestore updatePartner error:', e));
+      setDoc(doc(db, 'partners', updated.id), cleanFirestoreData(updated), { merge: true }).catch(e => console.warn('Firestore updatePartner error:', e));
     }
+  };
+
+  const updatePartnerCredentials = async (
+    partnerId: string,
+    creds: {
+      name?: string;
+      phone?: string;
+      email?: string;
+      password?: string;
+      vehicleType?: string;
+      vehicleNumber?: string;
+      currentLocationName?: string;
+      pinCode?: string;
+      isOnline?: boolean;
+    }
+  ) => {
+    const existingPartner = partners.find(p => p.id === partnerId);
+    const existingUser = users.find(u =>
+      u.id === partnerId ||
+      (existingPartner?.phone && normalizePhoneDigits(u.phone) && normalizePhoneDigits(u.phone) === normalizePhoneDigits(existingPartner.phone))
+    );
+
+    const updatedName = (creds.name ?? existingPartner?.name ?? existingUser?.name ?? 'Delivery Partner').trim();
+    const updatedPhone = (creds.phone ?? existingPartner?.phone ?? existingUser?.phone ?? '').trim();
+    const updatedEmail = (
+      creds.email?.trim() ||
+      existingUser?.email ||
+      `${updatedName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'partner'}${partnerId.slice(-4)}@partnerquickpal.in`
+    ).toLowerCase();
+    const updatedPassword = (creds.password?.trim() || existingUser?.password || '').trim();
+
+    if (!updatedPassword) {
+      return { success: false, message: 'Please enter a valid Password or Security PIN.' };
+    }
+
+    if (existingPartner) {
+      const updatedPartner: DeliveryPartner = {
+        ...existingPartner,
+        name: updatedName,
+        phone: updatedPhone,
+        vehicleType: creds.vehicleType ?? existingPartner.vehicleType,
+        vehicleNumber: creds.vehicleNumber ?? existingPartner.vehicleNumber,
+        currentLocationName: creds.currentLocationName ?? existingPartner.currentLocationName,
+        pinCode: creds.pinCode ?? existingPartner.pinCode,
+        isOnline: typeof creds.isOnline === 'boolean' ? creds.isOnline : existingPartner.isOnline
+      };
+      setPartners(prev => prev.map(p => p.id === partnerId ? updatedPartner : p));
+      if (db) {
+        await setDoc(doc(db, 'partners', partnerId), cleanFirestoreData(updatedPartner), { merge: true }).catch(e =>
+          console.warn('Firestore updatePartnerCredentials partner error:', e)
+        );
+      }
+    }
+
+    const userDocId = existingUser?.id || partnerId;
+    const updatedUser: AppUser = {
+      ...(existingUser || {}),
+      id: userDocId,
+      name: updatedName,
+      phone: updatedPhone,
+      email: updatedEmail,
+      username: existingUser?.username || updatedEmail.split('@')[0],
+      password: updatedPassword,
+      role: 'partner',
+      status: existingUser?.status || 'ACTIVE',
+      isActive: existingUser?.isActive !== false,
+      isVerified: true,
+      createdAt: existingUser?.createdAt || new Date().toISOString(),
+      serviceArea: existingUser?.serviceArea || 'Saphale (401102)'
+    };
+
+    setUsers(prev => [updatedUser, ...prev.filter(u => u.id !== userDocId)]);
+    if (db) {
+      await setDoc(doc(db, 'users', userDocId), cleanFirestoreData(updatedUser), { merge: true }).catch(e =>
+        console.warn('Firestore updatePartnerCredentials user error:', e)
+      );
+    }
+
+    if (updatedPassword.length >= 6) {
+      try {
+        await fetch('/api/admin/create-delivery-partner', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: updatedName,
+            email: updatedEmail,
+            password: updatedPassword,
+            phone: updatedPhone,
+            role: 'delivery_partner',
+            username: updatedUser.username,
+            status: 'active'
+          })
+        });
+      } catch {}
+    }
+
+    return {
+      success: true,
+      message: `Updated login credentials for ${updatedName}.`,
+      user: updatedUser
+    };
   };
 
   const deletePartner = async (partnerId: string) => {
@@ -3527,6 +3861,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteCategory,
         registerPartner,
         updatePartner,
+        updatePartnerCredentials,
         deletePartner,
         clearFakePartners,
         purgeAllTrialData,

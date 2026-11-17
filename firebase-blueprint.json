@@ -47,6 +47,35 @@
         "category": { "type": "string" }
       },
       "required": ["id", "name", "price"]
+    },
+    "partners": {
+      "title": "DeliveryPartner",
+      "description": "Registered QuickPal delivery partners fleet",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "vehicleType": { "type": "string" },
+        "vehicleNumber": { "type": "string" },
+        "isOnline": { "type": "boolean" },
+        "pinCode": { "type": "string" }
+      },
+      "required": ["id", "name", "phone"]
+    },
+    "stores": {
+      "title": "StoreInfo",
+      "description": "Partner neighborhood stores registered on QuickPal",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "loginId": { "type": "string" },
+        "area": { "type": "string" },
+        "pincode": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "name", "pincode"]
     }
   }
 }

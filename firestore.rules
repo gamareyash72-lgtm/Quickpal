@@ -70,6 +70,18 @@ service cloud.firestore {
     match /supportTickets/{ticketId} {
       allow read, write: if true;
     }
+
+    match /support_tickets/{ticketId} {
+      allow read, write: if true;
+    }
+
+    match /partners/{partnerId} {
+      allow read, write: if true;
+    }
+
+    match /stores/{storeId} {
+      allow read, write: if true;
+    }
   }
 }
 

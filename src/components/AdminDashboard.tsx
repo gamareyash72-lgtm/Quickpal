@@ -86,6 +86,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     updateCategory,
     deleteCategory,
     registerPartner,
+    updatePartnerCredentials,
     deletePartner,
     clearFakePartners,
     purgeAllTrialData,
@@ -211,14 +212,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
   const [catImageUrl, setCatImageUrl] = useState('');
   const [catBgLight, setCatBgLight] = useState('bg-orange-100 text-orange-800');
 
-  // Register Partner Form State
+  // Register / Edit Partner Form State
   const [showPartnerModal, setShowPartnerModal] = useState(false);
+  const [editingPartner, setEditingPartner] = useState<DeliveryPartner | null>(null);
+  const [newlyRegisteredPartner, setNewlyRegisteredPartner] = useState<{
+    name: string;
+    phone: string;
+    email: string;
+    password: string;
+  } | null>(null);
   const [partnerForm, setPartnerForm] = useState({
     name: '',
     phone: '',
     email: '',
     password: '',
-    vehicleType: 'EV Scooter',
+    vehicleType: 'EV Bike',
     vehicleNumber: 'MH-04-QP-' + Math.floor(1000 + Math.random() * 9000),
     currentLocationName: 'Saphale East Express Hub',
     pinCode: '401102',
@@ -548,17 +556,97 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
     }
   };
 
-  const handleRegisterPartner = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!partnerForm.name || !partnerForm.phone) return;
-    await registerPartner(partnerForm);
-    setShowPartnerModal(false);
+  const handleOpenNewPartnerModal = () => {
+    setEditingPartner(null);
+    setNewlyRegisteredPartner(null);
     setPartnerForm({
       name: '',
       phone: '',
       email: '',
       password: '',
-      vehicleType: 'EV Scooter',
+      vehicleType: 'EV Bike',
+      vehicleNumber: 'MH-04-QP-' + Math.floor(1000 + Math.random() * 9000),
+      currentLocationName: 'Saphale East Express Hub',
+      pinCode: '401102',
+      isOnline: true
+    });
+    setShowPartnerModal(true);
+  };
+
+  const handleOpenEditPartnerModal = (p: DeliveryPartner) => {
+    const pDigits = (p.phone || '').replace(/\D/g, '').slice(-10);
+    const linkedUser = users.find(u =>
+      u.id === p.id ||
+      (pDigits.length >= 6 && (u.phone || '').replace(/\D/g, '').slice(-10) === pDigits)
+    );
+    setEditingPartner(p);
+    setNewlyRegisteredPartner(null);
+    setPartnerForm({
+      name: p.name,
+      phone: p.phone || '',
+      email: linkedUser?.email || '',
+      password: linkedUser?.password || '',
+      vehicleType: p.vehicleType || 'EV Bike',
+      vehicleNumber: p.vehicleNumber || 'MH-04-QP-4011',
+      currentLocationName: p.currentLocationName || 'Saphale East Express Hub',
+      pinCode: p.pinCode || '401102',
+      isOnline: !!p.isOnline
+    });
+    setShowPartnerModal(true);
+  };
+
+  const handleRegisterPartner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!partnerForm.name.trim() || !partnerForm.phone.trim()) return;
+    if (!partnerForm.password.trim()) {
+      alert('Please set a Login Password / Security PIN for the Delivery Partner.');
+      return;
+    }
+
+    if (editingPartner) {
+      const res = await updatePartnerCredentials(editingPartner.id, {
+        name: partnerForm.name.trim(),
+        phone: partnerForm.phone.trim(),
+        email: partnerForm.email.trim(),
+        password: partnerForm.password.trim(),
+        vehicleType: partnerForm.vehicleType,
+        vehicleNumber: partnerForm.vehicleNumber,
+        currentLocationName: partnerForm.currentLocationName,
+        pinCode: partnerForm.pinCode,
+        isOnline: partnerForm.isOnline
+      });
+      if (res.success && res.user) {
+        setNewlyRegisteredPartner({
+          name: res.user.name,
+          phone: res.user.phone || partnerForm.phone.trim(),
+          email: res.user.email || '',
+          password: partnerForm.password.trim()
+        });
+        setEditingPartner(null);
+      } else {
+        alert(res.message);
+      }
+      return;
+    }
+
+    const res = await registerPartner(partnerForm);
+    if (res?.success && res.credentials) {
+      setNewlyRegisteredPartner({
+        name: partnerForm.name.trim(),
+        phone: res.credentials.phone || partnerForm.phone.trim(),
+        email: res.credentials.email,
+        password: res.credentials.password
+      });
+    } else {
+      setShowPartnerModal(false);
+    }
+
+    setPartnerForm({
+      name: '',
+      phone: '',
+      email: '',
+      password: '',
+      vehicleType: 'EV Bike',
       vehicleNumber: 'MH-04-QP-' + Math.floor(1000 + Math.random() * 9000),
       currentLocationName: 'Saphale East Express Hub',
       pinCode: '401102',
@@ -1590,7 +1678,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                 </button>
               )}
               <button
-                onClick={() => setShowPartnerModal(true)}
+                onClick={handleOpenNewPartnerModal}
                 className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-transform active:scale-95"
               >
                 <Plus className="w-4 h-4" /> Register Delivery Partner
@@ -1606,7 +1694,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
               <p className="font-black text-sm text-gray-800 dark:text-gray-200">No delivery partners registered yet.</p>
               <p className="text-xs text-gray-500 max-w-sm mx-auto">Click "Register Delivery Partner" to onboard your first rider into Firebase.</p>
               <button
-                onClick={() => setShowPartnerModal(true)}
+                onClick={handleOpenNewPartnerModal}
                 className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-black px-5 py-2.5 rounded-xl shadow-md"
               >
                 + Register First Delivery Partner
@@ -1619,18 +1707,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                   o => (o.deliveryPartnerId === p.id || o.assignedPartnerId === p.id) && (o.status || '').toLowerCase() === 'delivered'
                 ).length;
                 const partnerLiveEarnings = partnerDeliveredCount * 40;
+                const pDigits = (p.phone || '').replace(/\D/g, '').slice(-10);
+                const linkedUser = users.find(u =>
+                  u.id === p.id ||
+                  (pDigits.length >= 6 && (u.phone || '').replace(/\D/g, '').slice(-10) === pDigits)
+                );
+                const hasPassword = Boolean(linkedUser?.password);
 
                 return (
                   <div
                     key={p.id}
                     className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 space-y-2.5 text-xs relative group"
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-extrabold text-sm text-gray-900 dark:text-gray-100 block">{p.name}</span>
-                        <span className="text-[10px] text-gray-400 font-mono">ID: #{p.id}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="font-extrabold text-sm text-gray-900 dark:text-gray-100 block truncate">{p.name}</span>
+                        <span className="text-[10px] text-gray-400 font-mono truncate block">ID: #{p.id}</span>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1 shrink-0">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
                             p.isOnline ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'
@@ -1638,6 +1732,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
                         >
                           {p.isOnline ? 'Online' : 'Offline'}
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditPartnerModal(p)}
+                          className="p-1.5 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/40 rounded-lg transition-colors cursor-pointer"
+                          title="Edit Partner / Set Login Password"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           onClick={() => setPartnerToDelete(p)}
                           className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors"
@@ -1650,8 +1752,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
 
                     <div className="space-y-1 text-gray-600 dark:text-gray-300 text-[11px]">
                       <p>📞 Phone: <strong>{p.phone || 'N/A'}</strong></p>
+                      <p className="truncate">✉️ Login Email: <strong className="font-mono text-[10px]">{linkedUser?.email || 'Not linked'}</strong></p>
                       <p>🛵 Vehicle: <strong>{p.vehicleType || 'EV Bike'}</strong> ({p.vehicleNumber || 'MH-04-QP'})</p>
                       <p>📍 Location: <strong>{p.currentLocationName || 'Saphale Hub'}</strong> (PIN: {p.pinCode || '401102'})</p>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
+                        hasPassword
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
+                      }`}>
+                        {hasPassword ? `PIN/Pass: ${linkedUser?.password}` : '⚠️ Password Not Set'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditPartnerModal(p)}
+                        className="text-[10px] font-black text-orange-600 hover:underline cursor-pointer"
+                      >
+                        {hasPassword ? 'Edit / Reset Login' : 'Set Password →'}
+                      </button>
                     </div>
 
                     <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-between font-bold text-orange-700 dark:text-orange-400 text-[11px]">
@@ -3416,144 +3536,216 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOwnerMode = fa
         </div>
       )}
 
-      {/* Partner Onboarding Modal */}
+      {/* Partner Onboarding / Edit Credentials Modal */}
       {showPartnerModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 dark:border-gray-800 space-y-4 text-xs font-bold max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
                 <Bike className="w-5 h-5 text-orange-500" />
-                Register Delivery Partner
+                {editingPartner ? `Edit Partner: ${editingPartner.name}` : 'Register Delivery Partner'}
               </h3>
               <button
-                onClick={() => setShowPartnerModal(false)}
+                onClick={() => {
+                  setShowPartnerModal(false);
+                  setEditingPartner(null);
+                  setNewlyRegisteredPartner(null);
+                }}
                 className="p-1 rounded-full text-gray-400 hover:text-gray-600"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-gray-400 font-normal">
-              Direct Admin Onboarding. Partners are instantly registered in Firebase and can log in immediately.
-            </p>
 
-            <form onSubmit={handleRegisterPartner} className="space-y-3">
-              <div>
-                <label className="block mb-1 text-gray-700 dark:text-gray-300">Rider Full Name *</label>
-                <input
-                  type="text"
-                  value={partnerForm.name}
-                  onChange={e => setPartnerForm({ ...partnerForm, name: e.target.value })}
-                  placeholder="e.g. Yash Gamare"
-                  className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
-                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Phone Number *</label>
-                  <input
-                    type="tel"
-                    value={partnerForm.phone}
-                    onChange={e => setPartnerForm({ ...partnerForm, phone: e.target.value })}
-                    placeholder="+91 98765 40110"
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
-                    required
-                  />
+            {newlyRegisteredPartner ? (
+              <div className="space-y-4">
+                <div className="bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4 space-y-2 text-emerald-900 dark:text-emerald-200">
+                  <div className="flex items-center gap-2 font-black text-sm">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                    <span>Delivery Partner Ready for Login!</span>
+                  </div>
+                  <p className="text-xs font-medium">
+                    Share these credentials with the rider. They can log in on the Delivery Partner Portal using either their Phone Number or Email:
+                  </p>
+                  <div className="bg-white dark:bg-gray-900 rounded-xl p-3 border border-emerald-200 dark:border-emerald-800 font-mono text-xs space-y-1">
+                    <p>Rider: <strong className="text-gray-900 dark:text-white">{newlyRegisteredPartner.name}</strong></p>
+                    <p>Mobile Login: <strong className="text-[#FF6A00]">{newlyRegisteredPartner.phone}</strong></p>
+                    <p>Email Login: <strong className="text-gray-900 dark:text-white">{newlyRegisteredPartner.email}</strong></p>
+                    <p>Password / PIN: <strong className="text-emerald-600">{newlyRegisteredPartner.password}</strong></p>
+                  </div>
                 </div>
-
-                <div>
-                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Login Email</label>
-                  <input
-                    type="email"
-                    value={partnerForm.email}
-                    onChange={e => setPartnerForm({ ...partnerForm, email: e.target.value })}
-                    placeholder="partner@quickpal.in"
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
-                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Vehicle Type</label>
-                  <select
-                    value={partnerForm.vehicleType}
-                    onChange={e => setPartnerForm({ ...partnerForm, vehicleType: e.target.value })}
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-2 py-2 text-xs"
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(
+                        `QuickPal Delivery Partner Login\nRider: ${newlyRegisteredPartner.name}\nMobile: ${newlyRegisteredPartner.phone}\nEmail: ${newlyRegisteredPartner.email}\nPassword: ${newlyRegisteredPartner.password}`
+                      );
+                      alert('Partner login credentials copied to clipboard!');
+                    }}
+                    className="px-4 py-2 rounded-xl border border-orange-300 text-[#FF6A00] font-black flex items-center gap-1.5"
                   >
-                    <option value="EV Bike">EV Bike / Scooter</option>
-                    <option value="Motorcycle">Motorcycle</option>
-                    <option value="E-Bicycle">E-Bicycle</option>
-                    <option value="Van / 3W">Mini Van / 3-Wheeler</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Vehicle Registration No.</label>
-                  <input
-                    type="text"
-                    value={partnerForm.vehicleNumber}
-                    onChange={e => setPartnerForm({ ...partnerForm, vehicleNumber: e.target.value })}
-                    placeholder="MH-04-QP-4011"
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs uppercase font-mono"
-                  />
+                    <Copy className="w-3.5 h-3.5" /> Copy Login Details
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewlyRegisteredPartner(null);
+                      setShowPartnerModal(false);
+                    }}
+                    className="bg-[#FF6A00] text-white font-black px-5 py-2 rounded-xl"
+                  >
+                    Done
+                  </button>
                 </div>
               </div>
+            ) : (
+              <>
+                <p className="text-gray-400 font-normal">
+                  Set the rider's Mobile Number, optional Email, and Password/PIN. They can log in immediately on the Delivery Partner portal.
+                </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
-                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Primary Hub / Zone</label>
-                  <input
-                    type="text"
-                    value={partnerForm.currentLocationName}
-                    onChange={e => setPartnerForm({ ...partnerForm, currentLocationName: e.target.value })}
-                    placeholder="Saphale East Express Hub"
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
-                  />
-                </div>
+                <form onSubmit={handleRegisterPartner} className="space-y-3">
+                  <div>
+                    <label className="block mb-1 text-gray-700 dark:text-gray-300">Rider Full Name *</label>
+                    <input
+                      type="text"
+                      value={partnerForm.name}
+                      onChange={e => setPartnerForm({ ...partnerForm, name: e.target.value })}
+                      placeholder="e.g. Yash Gamare"
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
+                      required
+                    />
+                  </div>
 
-                <div>
-                  <label className="block mb-1 text-gray-700 dark:text-gray-300">Service PIN Code</label>
-                  <input
-                    type="text"
-                    value={partnerForm.pinCode}
-                    onChange={e => setPartnerForm({ ...partnerForm, pinCode: e.target.value })}
-                    placeholder="401102"
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-mono"
-                  />
-                </div>
-              </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block mb-1 text-gray-700 dark:text-gray-300">Phone Number *</label>
+                      <input
+                        type="tel"
+                        value={partnerForm.phone}
+                        onChange={e => setPartnerForm({ ...partnerForm, phone: e.target.value })}
+                        placeholder="9876540110"
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
+                        required
+                      />
+                    </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="partnerOnlineCheck"
-                  checked={partnerForm.isOnline}
-                  onChange={e => setPartnerForm({ ...partnerForm, isOnline: e.target.checked })}
-                  className="w-4 h-4 text-orange-500 rounded"
-                />
-                <label htmlFor="partnerOnlineCheck" className="text-xs text-gray-700 dark:text-gray-300 font-bold">
-                  Online & Ready for Dispatches immediately
-                </label>
-              </div>
+                    <div>
+                      <label className="block mb-1 text-gray-700 dark:text-gray-300">Login Email (Optional)</label>
+                      <input
+                        type="email"
+                        value={partnerForm.email}
+                        onChange={e => setPartnerForm({ ...partnerForm, email: e.target.value })}
+                        placeholder="auto-generated if blank"
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
+                      />
+                    </div>
+                  </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
-                <button
-                  type="button"
-                  onClick={() => setShowPartnerModal(false)}
-                  className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-orange-500 hover:bg-orange-600 text-white font-black px-5 py-2 rounded-xl shadow-md transition-transform active:scale-95 flex items-center gap-1.5"
-                >
-                  <CheckCircle className="w-4 h-4" /> Save & Register to Firebase
-                </button>
-              </div>
-            </form>
+                  <div>
+                    <label className="block mb-1 text-orange-600 dark:text-orange-400 font-black">
+                      Login Password / Security PIN *
+                    </label>
+                    <input
+                      type="text"
+                      value={partnerForm.password}
+                      onChange={e => setPartnerForm({ ...partnerForm, password: e.target.value })}
+                      placeholder="e.g. partner123 or 1234"
+                      className="w-full bg-orange-50/70 dark:bg-gray-800 border border-orange-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-mono font-bold"
+                      required
+                    />
+                    <span className="text-[10px] text-gray-400 font-normal">
+                      Rider enters this PIN/Password along with Phone Number or Email in Delivery Partner Login.
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block mb-1 text-gray-700 dark:text-gray-300">Vehicle Type</label>
+                      <select
+                        value={partnerForm.vehicleType}
+                        onChange={e => setPartnerForm({ ...partnerForm, vehicleType: e.target.value })}
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-2 py-2 text-xs"
+                      >
+                        <option value="EV Bike">EV Bike / Scooter</option>
+                        <option value="Motorcycle">Motorcycle</option>
+                        <option value="E-Bicycle">E-Bicycle</option>
+                        <option value="Van / 3W">Mini Van / 3-Wheeler</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block mb-1 text-gray-700 dark:text-gray-300">Vehicle Registration No.</label>
+                      <input
+                        type="text"
+                        value={partnerForm.vehicleNumber}
+                        onChange={e => setPartnerForm({ ...partnerForm, vehicleNumber: e.target.value })}
+                        placeholder="MH-04-QP-4011"
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs uppercase font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block mb-1 text-gray-700 dark:text-gray-300">Primary Hub / Zone</label>
+                      <input
+                        type="text"
+                        value={partnerForm.currentLocationName}
+                        onChange={e => setPartnerForm({ ...partnerForm, currentLocationName: e.target.value })}
+                        placeholder="Saphale East Express Hub"
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block mb-1 text-gray-700 dark:text-gray-300">Service PIN Code</label>
+                      <input
+                        type="text"
+                        value={partnerForm.pinCode}
+                        onChange={e => setPartnerForm({ ...partnerForm, pinCode: e.target.value })}
+                        placeholder="401102"
+                        className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="partnerOnlineCheck"
+                      checked={partnerForm.isOnline}
+                      onChange={e => setPartnerForm({ ...partnerForm, isOnline: e.target.checked })}
+                      className="w-4 h-4 text-orange-500 rounded"
+                    />
+                    <label htmlFor="partnerOnlineCheck" className="text-xs text-gray-700 dark:text-gray-300 font-bold">
+                      Online & Ready for Dispatches immediately
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPartnerModal(false);
+                        setEditingPartner(null);
+                      }}
+                      className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 font-bold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="bg-orange-500 hover:bg-orange-600 text-white font-black px-5 py-2 rounded-xl shadow-md transition-transform active:scale-95 flex items-center gap-1.5"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      {editingPartner ? 'Update Partner & Login' : 'Save & Register Partner'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}

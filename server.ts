@@ -819,7 +819,15 @@ app.post(["/api/admin/create-delivery-partner", "/api/admin/create-user"], async
     // Fallback REST API attempt
     if (!uid) {
       try {
-        const apiKey = process.env.VITE_FIREBASE_API_KEY || "AIzaSyAEh_cK5PcVlCiexIW5500sIADgkxJheKI";
+        let configApiKey = "";
+        try {
+          const cfgPath = path.join(process.cwd(), "firebase-applet-config.json");
+          if (fs.existsSync(cfgPath)) {
+            const cfgData = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+            configApiKey = cfgData.apiKey || "";
+          }
+        } catch {}
+        const apiKey = process.env.VITE_FIREBASE_API_KEY || configApiKey || "AIzaSyB2nMD9yBHGC3zEEu84Scd8kLbi_c-xA6I";
         const restResp = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
